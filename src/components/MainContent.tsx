@@ -26,31 +26,6 @@ export const MainContent = ({
   const renderServerContent = (serverUrl: string, serverName: string, icon: React.ReactNode) => {
     return (
       <div className="server-content flex flex-col flex-1 overflow-hidden">
-        {/* Server URL Bar */}
-        <div 
-          className="server-url-bar flex items-center gap-3 px-4 py-2 border-b text-sm"
-          style={{ 
-            backgroundColor: 'var(--color-bg-secondary)',
-            borderColor: 'var(--color-border-secondary)',
-            color: 'var(--color-text-secondary)'
-          }}
-        >
-          <div className="server-icon flex items-center">
-            {icon}
-          </div>
-          <div className="server-url-info flex items-center gap-2 flex-1">
-            <span className="server-label font-medium">{serverName}:</span>
-            <span className="server-url font-mono">{serverUrl}</span>
-          </div>
-          <div 
-            className="health-indicator w-2 h-2 rounded-full"
-            style={{ 
-              backgroundColor: serverState.isHealthy ? '#10b981' : '#ef4444' 
-            }}
-            title={serverState.isHealthy ? 'Server healthy' : 'Server unhealthy'}
-          />
-        </div>
-        
         {/* Embedded Server Content */}
         <div className="server-iframe-container flex-1 relative">
           <iframe

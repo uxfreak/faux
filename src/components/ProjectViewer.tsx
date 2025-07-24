@@ -26,6 +26,11 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   // Server management
   const { serverState, startServers, stopServers, retryConnection } = useProjectServers(project);
 
+  // Auto-start servers when project opens
+  useEffect(() => {
+    startServers();
+  }, [project.id]); // Re-start if project changes
+
   const handleModeChange = (mode: ViewMode) => {
     setViewMode(mode);
   };
@@ -138,8 +143,6 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           onModeChange={handleModeChange}
           onTerminalToggle={handleTerminalToggle}
           onFullscreenToggle={handleFullscreenToggle}
-          onStartServers={startServers}
-          onStopServers={stopServers}
           data-section="header"
         />
       )}

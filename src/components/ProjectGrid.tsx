@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectCard } from './ProjectCard';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectViewer } from './ProjectViewer';
-import { LoadingStatesDemo } from './LoadingStatesDemo';
 import { ThemeToggle } from './ThemeToggle';
 import { Dropdown } from './Dropdown';
 import { ProjectFilters, Project } from '../types/Project';
@@ -15,7 +14,6 @@ export const ProjectGrid = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [showLoadingDemo, setShowLoadingDemo] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (search: string) => {
@@ -92,10 +90,6 @@ export const ProjectGrid = () => {
     setIsCreateModalOpen(false);
   };
 
-  // If loading demo is requested, show the demo
-  if (showLoadingDemo) {
-    return <LoadingStatesDemo onBack={() => setShowLoadingDemo(false)} />;
-  }
 
   // If a project is selected, show the ProjectViewer
   if (currentProject) {
@@ -120,30 +114,6 @@ export const ProjectGrid = () => {
             <h1 className="dashboard-title text-3xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
               Projects
             </h1>
-            
-            {/* Demo button - only show in development */}
-            <motion.button
-              onClick={() => setShowLoadingDemo(true)}
-              className="demo-button px-3 py-1 text-xs transition-colors"
-              style={{
-                backgroundColor: 'transparent',
-                color: 'var(--color-text-tertiary)',
-                border: '1px solid var(--color-border-secondary)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--color-text-secondary)';
-                e.currentTarget.style.borderColor = 'var(--color-border-primary)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--color-text-tertiary)';
-                e.currentTarget.style.borderColor = 'var(--color-border-secondary)';
-              }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              title="View loading states demo"
-            >
-              Loading Demo
-            </motion.button>
           </div>
           
           <div className="header-actions flex items-center gap-4" data-section="actions">

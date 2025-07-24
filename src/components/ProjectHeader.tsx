@@ -16,8 +16,6 @@ interface ProjectHeaderProps {
   onModeChange: (mode: ViewMode) => void;
   onTerminalToggle: () => void;
   onFullscreenToggle: () => void;
-  onStartServers: () => Promise<void>;
-  onStopServers: () => Promise<void>;
   'data-section'?: string;
 }
 
@@ -31,8 +29,6 @@ export const ProjectHeader = ({
   onModeChange,
   onTerminalToggle,
   onFullscreenToggle,
-  onStartServers,
-  onStopServers,
   'data-section': dataSection 
 }: ProjectHeaderProps) => {
   return (
@@ -84,78 +80,45 @@ export const ProjectHeader = ({
 
       {/* Right: Controls */}
       <div className="header-controls flex items-center gap-2" data-section="controls">
-        {/* Server Controls */}
-        <div className="server-controls flex items-center gap-1">
-          {serverState.viteServer || serverState.storybookServer ? (
+        {/* Fullscreen Toggle - leftmost position, only show in preview mode */}
+        {viewMode === 'preview' && (
+          <>
             <motion.button
-              onClick={onStopServers}
-              disabled={serverState.isStarting}
-              className="server-button px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
+              onClick={onFullscreenToggle}
+              className="fullscreen-toggle p-2 transition-colors"
               style={{
-                backgroundColor: '#ef4444',
-                color: 'white',
-                borderRadius: '0'
+                color: isFullscreen 
+                  ? 'var(--color-text-primary)' 
+                  : 'var(--color-text-secondary)',
+                backgroundColor: isFullscreen 
+                  ? 'var(--color-surface-hover)' 
+                  : 'transparent'
               }}
               onMouseEnter={(e) => {
-                if (!serverState.isStarting) {
-                  e.currentTarget.style.backgroundColor = '#dc2626';
+                e.currentTarget.style.color = 'var(--color-text-primary)';
+                if (!isFullscreen) {
+                  e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!serverState.isStarting) {
-                  e.currentTarget.style.backgroundColor = '#ef4444';
+                if (!isFullscreen) {
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  e.currentTarget.style.backgroundColor = 'transparent';
                 }
               }}
-              whileHover={{ scale: serverState.isStarting ? 1 : 1.02 }}
-              whileTap={{ scale: serverState.isStarting ? 1 : 0.98 }}
-              title="Stop Development Servers"
-              data-control="stop-servers"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              title="Toggle Fullscreen"
+              data-control="fullscreen"
+              data-active={isFullscreen}
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                <rect x="6" y="6" width="12" height="12" />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
-              Stop Servers
             </motion.button>
-          ) : (
-            <motion.button
-              onClick={onStartServers}
-              className="server-button px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
-              style={{
-                backgroundColor: '#10b981',
-                color: 'white',
-                borderRadius: '0'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#059669';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#10b981';
-              }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              title="Start Development Servers"
-              data-control="start-servers"
-            >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Start Servers
-            </motion.button>
-          )}
-          
-          {/* Server Status Indicator */}
-          {(serverState.viteServer || serverState.storybookServer) && (
-            <div 
-              className="server-status w-2 h-2 rounded-full ml-1"
-              style={{ 
-                backgroundColor: serverState.isHealthy ? '#10b981' : '#ef4444' 
-              }}
-              title={`Servers ${serverState.isHealthy ? 'healthy' : 'unhealthy'}`}
-            />
-          )}
-        </div>
-        
-        <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
+            <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
+          </>
+        )}
         
         <ModeToggle
           currentMode={viewMode}
@@ -163,42 +126,25 @@ export const ProjectHeader = ({
           data-control="mode-toggle"
         />
         
-        {/* Fullscreen Toggle - only show in preview mode */}
-        {viewMode === 'preview' && (
-          <motion.button
-            onClick={onFullscreenToggle}
-            className="fullscreen-toggle p-2 transition-colors"
-            style={{
-              color: isFullscreen 
-                ? 'var(--color-text-primary)' 
-                : 'var(--color-text-secondary)',
-              backgroundColor: isFullscreen 
-                ? 'var(--color-surface-hover)' 
-                : 'transparent'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--color-text-primary)';
-              if (!isFullscreen) {
-                e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
+        {/* Server Status Indicator - passive display only */}
+        {(serverState.viteServer || serverState.storybookServer) && (
+          <>
+            <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
+            <div 
+              className="server-status w-2 h-2 rounded-full"
+              style={{ 
+                backgroundColor: serverState.isHealthy ? '#10b981' : '#ef4444' 
+              }}
+              title={
+                serverState.isHealthy 
+                  ? `Servers healthy\n${serverState.viteServer ? `Vite: ${serverState.viteServer.url}` : ''}${serverState.viteServer && serverState.storybookServer ? '\n' : ''}${serverState.storybookServer ? `Storybook: ${serverState.storybookServer.url}` : ''}`
+                  : `Servers unhealthy${serverState.error ? `\nError: ${serverState.error}` : ''}`
               }
-            }}
-            onMouseLeave={(e) => {
-              if (!isFullscreen) {
-                e.currentTarget.style.color = 'var(--color-text-secondary)';
-                e.currentTarget.style.backgroundColor = 'transparent';
-              }
-            }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            title="Toggle Fullscreen"
-            data-control="fullscreen"
-            data-active={isFullscreen}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
-          </motion.button>
+            />
+          </>
         )}
+        
+        <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
         
         {/* Terminal Toggle */}
         <motion.button
