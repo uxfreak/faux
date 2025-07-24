@@ -1,18 +1,23 @@
 import { motion } from 'framer-motion';
 import { ModeToggle } from './ModeToggle';
 import { ThemeToggle } from './ThemeToggle';
+import { LoadingSpinner } from './LoadingSpinner';
 import { Project } from '../types/Project';
 import { ViewMode } from './ProjectViewer';
+import { ProjectServerState } from '../hooks/useProjectServers';
 
 interface ProjectHeaderProps {
   project: Project;
   viewMode: ViewMode;
   isTerminalOpen: boolean;
   isFullscreen: boolean;
+  serverState: ProjectServerState;
   onBack: () => void;
   onModeChange: (mode: ViewMode) => void;
   onTerminalToggle: () => void;
   onFullscreenToggle: () => void;
+  onStartServers: () => Promise<void>;
+  onStopServers: () => Promise<void>;
   'data-section'?: string;
 }
 
@@ -21,10 +26,13 @@ export const ProjectHeader = ({
   viewMode, 
   isTerminalOpen,
   isFullscreen,
+  serverState,
   onBack, 
   onModeChange,
   onTerminalToggle,
   onFullscreenToggle,
+  onStartServers,
+  onStopServers,
   'data-section': dataSection 
 }: ProjectHeaderProps) => {
   return (
@@ -76,6 +84,79 @@ export const ProjectHeader = ({
 
       {/* Right: Controls */}
       <div className="header-controls flex items-center gap-2" data-section="controls">
+        {/* Server Controls */}
+        <div className="server-controls flex items-center gap-1">
+          {serverState.viteServer || serverState.storybookServer ? (
+            <motion.button
+              onClick={onStopServers}
+              disabled={serverState.isStarting}
+              className="server-button px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
+              style={{
+                backgroundColor: '#ef4444',
+                color: 'white',
+                borderRadius: '0'
+              }}
+              onMouseEnter={(e) => {
+                if (!serverState.isStarting) {
+                  e.currentTarget.style.backgroundColor = '#dc2626';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!serverState.isStarting) {
+                  e.currentTarget.style.backgroundColor = '#ef4444';
+                }
+              }}
+              whileHover={{ scale: serverState.isStarting ? 1 : 1.02 }}
+              whileTap={{ scale: serverState.isStarting ? 1 : 0.98 }}
+              title="Stop Development Servers"
+              data-control="stop-servers"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" />
+              </svg>
+              Stop Servers
+            </motion.button>
+          ) : (
+            <motion.button
+              onClick={onStartServers}
+              className="server-button px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5"
+              style={{
+                backgroundColor: '#10b981',
+                color: 'white',
+                borderRadius: '0'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#059669';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#10b981';
+              }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              title="Start Development Servers"
+              data-control="start-servers"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Start Servers
+            </motion.button>
+          )}
+          
+          {/* Server Status Indicator */}
+          {(serverState.viteServer || serverState.storybookServer) && (
+            <div 
+              className="server-status w-2 h-2 rounded-full ml-1"
+              style={{ 
+                backgroundColor: serverState.isHealthy ? '#10b981' : '#ef4444' 
+              }}
+              title={`Servers ${serverState.isHealthy ? 'healthy' : 'unhealthy'}`}
+            />
+          )}
+        </div>
+        
+        <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
+        
         <ModeToggle
           currentMode={viewMode}
           onModeChange={onModeChange}

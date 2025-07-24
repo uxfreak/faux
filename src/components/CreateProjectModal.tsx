@@ -1,33 +1,103 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Project } from '../types/Project';
+import { ProgressModal } from './ProgressModal';
+import { ScaffoldOptions, ScaffoldProgress, ScaffoldResult } from '../types/electron';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  onCreateProject: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'> & { path?: string }) => void;
 }
 
 export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateProjectModalProps) => {
   const [formData, setFormData] = useState({
     name: '',
-    description: ''
+    description: '',
+    customPath: ''
   });
+  
+  const [isScaffolding, setIsScaffolding] = useState(false);
+  const [scaffoldProgress, setScaffoldProgress] = useState<ScaffoldProgress & { projectName: string } | null>(null);
+  const [useCustomPath, setUseCustomPath] = useState(false);
+  
+  const progressCleanupRef = useRef<(() => void) | null>(null);
 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const getProjectPath = () => {
+    if (useCustomPath && formData.customPath.trim()) {
+      return formData.customPath.trim();
+    }
+    // Default to ~/faux-projects/{project-name}
+    return undefined; // Let scaffolding service use default
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    if (!formData.name.trim() || isScaffolding) return;
 
-    onCreateProject({
-      name: formData.name.trim(),
-      description: formData.description.trim() || undefined
+    setIsScaffolding(true);
+    setScaffoldProgress({
+      projectName: formData.name.trim(),
+      steps: [],
+      progress: 0,
+      currentStep: 0
     });
 
-    // Reset form
-    setFormData({ name: '', description: '' });
-    onClose();
+    try {
+      if (!window.electronAPI) {
+        throw new Error('Electron API not available');
+      }
+
+      // Setup progress listener
+      const cleanup = window.electronAPI.onScaffoldProgress((progress) => {
+        setScaffoldProgress(progress);
+      });
+      progressCleanupRef.current = cleanup;
+
+      // Start scaffolding
+      const scaffoldOptions: ScaffoldOptions = {
+        projectName: formData.name.trim(),
+        targetPath: getProjectPath()
+      };
+
+      const result = await window.electronAPI.scaffoldProject(scaffoldOptions);
+
+      if (result.success) {
+        // Create project in database
+        const projectData = {
+          name: formData.name.trim(),
+          description: formData.description.trim() || undefined,
+          path: result.projectPath
+        };
+
+        onCreateProject(projectData);
+        
+        // Reset form and close
+        setFormData({ name: '', description: '', customPath: '' });
+        setIsScaffolding(false);
+        setScaffoldProgress(null);
+        onClose();
+      } else {
+        throw new Error(result.error || 'Scaffolding failed');
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      setScaffoldProgress(prev => prev ? {
+        ...prev,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      } : null);
+    }
   };
+
+  // Cleanup progress listener on unmount
+  useEffect(() => {
+    return () => {
+      if (progressCleanupRef.current) {
+        progressCleanupRef.current();
+      }
+    };
+  }, []);
 
 
   return (
@@ -162,6 +232,53 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
             />
           </div>
 
+          {/* Project Path */}
+          <div className="form-field">
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="checkbox"
+                id="custom-path"
+                checked={useCustomPath}
+                onChange={(e) => setUseCustomPath(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <label 
+                htmlFor="custom-path" 
+                className="text-sm font-medium"
+                style={{ color: 'var(--color-text-primary)' }}
+              >
+                Custom project path
+              </label>
+            </div>
+            
+            {useCustomPath && (
+              <input
+                type="text"
+                value={formData.customPath}
+                onChange={(e) => setFormData(prev => ({ ...prev, customPath: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border transition-colors focus:outline-none"
+                style={{
+                  backgroundColor: 'var(--color-bg-primary)',
+                  borderColor: 'var(--color-border-primary)',
+                  color: 'var(--color-text-primary)'
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = 'var(--color-border-focus)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = 'var(--color-border-primary)';
+                }}
+                placeholder="/path/to/your/project"
+              />
+            )}
+            
+            {!useCustomPath && (
+              <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Default: ~/faux-projects/{formData.name.trim() || 'project-name'}
+              </p>
+            )}
+          </div>
+
 
         </form>
 
@@ -192,31 +309,45 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
           </motion.button>
           <motion.button
             onClick={handleSubmit}
-            disabled={!formData.name.trim()}
-            className="px-4 py-2 text-sm  transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!formData.name.trim() || isScaffolding}
+            className="px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             style={{
               backgroundColor: 'var(--color-action-primary)',
-              color: formData.name.trim() ? 'var(--color-bg-primary)' : 'var(--color-text-tertiary)',
+              color: (formData.name.trim() && !isScaffolding) ? 'var(--color-bg-primary)' : 'var(--color-text-tertiary)',
               borderColor: 'var(--color-action-primary)'
             }}
             onMouseEnter={(e) => {
-              if (formData.name.trim()) {
+              if (formData.name.trim() && !isScaffolding) {
                 e.currentTarget.style.backgroundColor = 'var(--color-action-primary-hover)';
               }
             }}
             onMouseLeave={(e) => {
-              if (formData.name.trim()) {
+              if (formData.name.trim() && !isScaffolding) {
                 e.currentTarget.style.backgroundColor = 'var(--color-action-primary)';
               }
             }}
-            whileHover={formData.name.trim() ? { scale: 1.02 } : {}}
-            whileTap={formData.name.trim() ? { scale: 0.98 } : {}}
+            whileHover={(formData.name.trim() && !isScaffolding) ? { scale: 1.02 } : {}}
+            whileTap={(formData.name.trim() && !isScaffolding) ? { scale: 0.98 } : {}}
           >
-            Create Project
+            {isScaffolding && (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            {isScaffolding ? 'Creating...' : 'Create Project'}
           </motion.button>
         </div>
           </motion.div>
         </motion.div>
+      )}
+      
+      {/* Progress Modal */}
+      {scaffoldProgress && (
+        <ProgressModal
+          isOpen={true}
+          title={`Creating ${scaffoldProgress.projectName}`}
+          steps={scaffoldProgress.steps}
+          progress={scaffoldProgress.progress}
+          error={scaffoldProgress.error || undefined}
+        />
       )}
     </AnimatePresence>
   );

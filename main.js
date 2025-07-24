@@ -2,14 +2,16 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getDatabase } from './src/main/database.js';
+import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const isDev = process.env.NODE_ENV === 'development';
+let mainWindow;
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     webPreferences: {
@@ -41,9 +43,13 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   setupIPCHandlers();
+  setupServerIPCHandlers(mainWindow);
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  // Clean up all running servers before quitting
+  await cleanupAllServers();
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -53,6 +59,17 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+app.on('before-quit', async (event) => {
+  // Prevent default quit to allow cleanup
+  event.preventDefault();
+  
+  // Clean up all running servers
+  await cleanupAllServers();
+  
+  // Now actually quit
+  app.exit(0);
 });
 
 // Setup IPC handlers for database operations

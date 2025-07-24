@@ -4,6 +4,7 @@ import { ProjectHeader } from './ProjectHeader';
 import { MainContent } from './MainContent';
 import { TerminalPane } from './TerminalPane';
 import { Project } from '../types/Project';
+import { useProjectServers } from '../hooks/useProjectServers';
 
 export type ViewMode = 'preview' | 'components';
 
@@ -21,6 +22,9 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   const [isDraggingCloseButton, setIsDraggingCloseButton] = useState(false);
   const [hasBeenDragged, setHasBeenDragged] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Server management
+  const { serverState, startServers, stopServers, retryConnection } = useProjectServers(project);
 
   const handleModeChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -105,6 +109,12 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
     setHasBeenDragged(false); // Reset drag flag when starting new drag
   };
 
+  const handleBackWithCleanup = async () => {
+    // Stop servers when leaving project view
+    await stopServers();
+    onBack();
+  };
+
   return (
     <motion.div
       className="project-viewer flex flex-col w-full h-full"
@@ -123,10 +133,13 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           viewMode={viewMode}
           isTerminalOpen={isTerminalOpen}
           isFullscreen={isFullscreen}
-          onBack={onBack}
+          serverState={serverState}
+          onBack={handleBackWithCleanup}
           onModeChange={handleModeChange}
           onTerminalToggle={handleTerminalToggle}
           onFullscreenToggle={handleFullscreenToggle}
+          onStartServers={startServers}
+          onStopServers={stopServers}
           data-section="header"
         />
       )}
@@ -148,7 +161,9 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           <MainContent
             project={project}
             viewMode={viewMode}
+            serverState={serverState}
             isFullscreen={isFullscreen}
+            onRetryConnection={retryConnection}
             data-content="embedded-view"
           />
           
