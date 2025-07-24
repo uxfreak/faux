@@ -1,0 +1,19 @@
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  thumbnail?: string; // Base64 or file path
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectFilters {
+  search: string;
+  sortBy: 'name' | 'createdAt' | 'updatedAt';
+  sortOrder: 'asc' | 'desc';
+}
+
+export interface ProjectStore {
+  projects: Project[];
+  filters: ProjectFilters;
+}
