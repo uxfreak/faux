@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectCard } from './ProjectCard';
 import { CreateProjectModal } from './CreateProjectModal';
+import { ProjectViewer } from './ProjectViewer';
 import { ThemeToggle } from './ThemeToggle';
 import { Dropdown } from './Dropdown';
 import { ProjectFilters, Project } from '../types/Project';
@@ -12,6 +13,7 @@ export const ProjectGrid = () => {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = (search: string) => {
@@ -68,7 +70,11 @@ export const ProjectGrid = () => {
 
   const handleOpenProject = (project: Project) => {
     console.log('Opening project:', project.name);
-    // TODO: Navigate to project view
+    setCurrentProject(project);
+  };
+
+  const handleBackToGrid = () => {
+    setCurrentProject(null);
   };
 
   const handleRenameProject = (project: Project) => {
@@ -83,6 +89,16 @@ export const ProjectGrid = () => {
     addProject(projectData);
     setIsCreateModalOpen(false);
   };
+
+  // If a project is selected, show the ProjectViewer
+  if (currentProject) {
+    return (
+      <ProjectViewer
+        project={currentProject}
+        onBack={handleBackToGrid}
+      />
+    );
+  }
 
   return (
     <div 
