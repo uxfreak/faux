@@ -12,6 +12,7 @@
     "electron": "electron .",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && NODE_ENV=development electron .\"",
     "app": "npm run build && electron .",
+    "postinstall": "electron-rebuild",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -23,10 +24,14 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^12.2.0",
     "electron-rebuild": "^3.2.9",
     "framer-motion": "^12.23.9",
     "get-port": "^7.1.0",
+    "node-pty": "^1.1.0-beta34",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.11"

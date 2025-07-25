@@ -34,6 +34,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('server:error');
   },
 
+  // Terminal Management API
+  terminal: {
+    create: (options) => ipcRenderer.invoke('terminal:create', options),
+    write: (sessionId, data) => ipcRenderer.invoke('terminal:write', { sessionId, data }),
+    resize: (sessionId, cols, rows) => ipcRenderer.invoke('terminal:resize', { sessionId, cols, rows }),
+    destroy: (sessionId) => ipcRenderer.invoke('terminal:destroy', { sessionId }),
+    destroyProject: (projectId) => ipcRenderer.invoke('terminal:destroyProject', { projectId }),
+    getInfo: (sessionId) => ipcRenderer.invoke('terminal:getInfo', { sessionId }),
+    getAll: () => ipcRenderer.invoke('terminal:getAll'),
+    getProject: (projectId) => ipcRenderer.invoke('terminal:getProject', { projectId })
+  },
+
+  // Terminal event listeners
+  onTerminalData: (callback) => {
+    ipcRenderer.on('terminal:data', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('terminal:data');
+  },
+  onTerminalExit: (callback) => {
+    ipcRenderer.on('terminal:exit', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('terminal:exit');
+  },
+  onTerminalError: (callback) => {
+    ipcRenderer.on('terminal:error', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('terminal:error');
+  },
+  onTerminalDestroyed: (callback) => {
+    ipcRenderer.on('terminal:destroyed', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('terminal:destroyed');
+  },
+
   // Project scaffolding API
   scaffoldProject: (options) => ipcRenderer.invoke('project:scaffold', options),
   onScaffoldProgress: (callback) => {

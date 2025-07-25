@@ -189,6 +189,15 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   const handleBackWithCleanup = async () => {
     // Stop servers when leaving project view
     await stopServers();
+    
+    // Clean up terminals for this project
+    try {
+      await window.electronAPI.terminal.destroyProject(project.id);
+      console.log(`[ProjectViewer] Cleaned up terminals for project ${project.name}`);
+    } catch (error) {
+      console.error(`[ProjectViewer] Failed to cleanup terminals for project ${project.name}:`, error);
+    }
+    
     onBack();
   };
 

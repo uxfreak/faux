@@ -73,11 +73,14 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
 
         onCreateProject(projectData);
         
-        // Reset form and close
-        setFormData({ name: '', description: '', customPath: '' });
-        setIsScaffolding(false);
-        setScaffoldProgress(null);
-        onClose();
+        // Give a moment for progress to update to 100% before closing
+        setTimeout(() => {
+          // Reset form and close
+          setFormData({ name: '', description: '', customPath: '' });
+          setIsScaffolding(false);
+          setScaffoldProgress(null);
+          onClose();
+        }, 500);
       } else {
         throw new Error(result.error || 'Scaffolding failed');
       }

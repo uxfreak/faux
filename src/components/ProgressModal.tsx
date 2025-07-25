@@ -112,7 +112,7 @@ export const ProgressModal = ({
                 
                 <div className="progress-text flex justify-between text-sm">
                   <span style={{ color: 'var(--color-text-secondary)' }}>
-                    Step {completedSteps + 1} of {totalSteps}
+                    Step {Math.min(completedSteps + 1, totalSteps)} of {totalSteps}
                   </span>
                   <span style={{ color: 'var(--color-text-secondary)' }}>
                     {Math.round(progress)}%

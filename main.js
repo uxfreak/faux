@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getDatabase } from './src/main/database.js';
 import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
+import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,8 +48,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', async () => {
-  // Clean up all running servers before quitting
+  // Clean up all running servers and terminals before quitting
   await cleanupAllServers();
+  cleanupTerminalManager();
   
   if (process.platform !== 'darwin') {
     app.quit();
@@ -65,8 +67,9 @@ app.on('before-quit', async (event) => {
   // Prevent default quit to allow cleanup
   event.preventDefault();
   
-  // Clean up all running servers
+  // Clean up all running servers and terminals
   await cleanupAllServers();
+  cleanupTerminalManager();
   
   // Now actually quit
   app.exit(0);
@@ -123,6 +126,145 @@ function setupIPCHandlers() {
     } catch (error) {
       console.error('Error getting project:', error);
       throw error;
+    }
+  });
+
+  // Terminal management IPC handlers
+  const terminalManager = getTerminalManager();
+
+  // Create terminal session
+  ipcMain.handle('terminal:create', async (event, options) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized terminal creation request');
+      }
+
+      const terminalInfo = terminalManager.createTerminal(options);
+      return terminalInfo;
+    } catch (error) {
+      console.error('Error creating terminal:', error);
+      throw error;
+    }
+  });
+
+  // Write to terminal
+  ipcMain.handle('terminal:write', async (event, { sessionId, data }) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized terminal write request');
+      }
+
+      terminalManager.writeToTerminal(sessionId, data);
+      return { success: true };
+    } catch (error) {
+      console.error('Error writing to terminal:', error);
+      throw error;
+    }
+  });
+
+  // Resize terminal
+  ipcMain.handle('terminal:resize', async (event, { sessionId, cols, rows }) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized terminal resize request');
+      }
+
+      terminalManager.resizeTerminal(sessionId, cols, rows);
+      return { success: true };
+    } catch (error) {
+      console.error('Error resizing terminal:', error);
+      throw error;
+    }
+  });
+
+  // Destroy terminal session
+  ipcMain.handle('terminal:destroy', async (event, { sessionId }) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized terminal destroy request');
+      }
+
+      terminalManager.destroyTerminal(sessionId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error destroying terminal:', error);
+      throw error;
+    }
+  });
+
+  // Destroy all terminals for a project
+  ipcMain.handle('terminal:destroyProject', async (event, { projectId }) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized terminal destroy request');
+      }
+
+      terminalManager.destroyProjectTerminals(projectId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error destroying project terminals:', error);
+      throw error;
+    }
+  });
+
+  // Get terminal info
+  ipcMain.handle('terminal:getInfo', async (event, { sessionId }) => {
+    try {
+      const info = terminalManager.getTerminalInfo(sessionId);
+      return info;
+    } catch (error) {
+      console.error('Error getting terminal info:', error);
+      throw error;
+    }
+  });
+
+  // Get all terminals
+  ipcMain.handle('terminal:getAll', async (event) => {
+    try {
+      return terminalManager.getAllTerminals();
+    } catch (error) {
+      console.error('Error getting all terminals:', error);
+      throw error;
+    }
+  });
+
+  // Get project terminals
+  ipcMain.handle('terminal:getProject', async (event, { projectId }) => {
+    try {
+      return terminalManager.getProjectTerminals(projectId);
+    } catch (error) {
+      console.error('Error getting project terminals:', error);
+      throw error;
+    }
+  });
+
+  // Forward terminal events to renderer
+  terminalManager.on('terminal:data', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:data', data);
+    }
+  });
+
+  terminalManager.on('terminal:exit', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:exit', data);
+    }
+  });
+
+  terminalManager.on('terminal:error', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:error', data);
+    }
+  });
+
+  terminalManager.on('terminal:destroyed', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal:destroyed', data);
     }
   });
 
