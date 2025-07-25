@@ -5,7 +5,7 @@ import { Project } from '../types/Project';
 interface TerminalPaneProps {
   project: Project;
   onClose: () => void;
-  onResize?: (width: number) => void;
+  onResize?: (widthPixels: number) => void;
   'data-component'?: string;
 }
 
@@ -15,51 +15,7 @@ export const TerminalPane = ({
   onResize,
   'data-component': dataComponent 
 }: TerminalPaneProps) => {
-  const [isResizing, setIsResizing] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
-  const dragHandleRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing || !terminalRef.current) return;
-      
-      const container = terminalRef.current.parentElement;
-      if (!container) return;
-      
-      const containerRect = container.getBoundingClientRect();
-      const newWidth = containerRect.right - e.clientX;
-      const minWidth = 200; // Minimum width in pixels
-      const maxWidth = containerRect.width * 0.7; // Maximum 70% of container
-      
-      const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-      const widthPercentage = (clampedWidth / containerRect.width) * 100;
-      
-      // Don't apply width directly to terminal, let parent handle it
-      onResize?.(widthPercentage);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    if (isResizing) {
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, onResize]);
-
-  const handleMouseDown = () => {
-    setIsResizing(true);
-  };
   return (
     <div 
       ref={terminalRef}
@@ -68,20 +24,7 @@ export const TerminalPane = ({
       data-component={dataComponent}
       data-project-id={project.id}
     >
-      {/* Drag Handle */}
-      <div
-        ref={dragHandleRef}
-        className="drag-handle absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 hover:bg-opacity-50 transition-colors z-10"
-        style={{ 
-          backgroundColor: isResizing ? 'var(--color-action-primary)' : 'transparent',
-          marginLeft: '-2px'
-        }}
-        onMouseDown={handleMouseDown}
-        data-control="resize-handle"
-        title="Drag to resize terminal"
-      />
-      
-      <div className="terminal-content-wrapper flex flex-col h-full pl-1">
+      <div className="terminal-content-wrapper flex flex-col h-full">
 
       {/* Terminal Content */}
       <div 

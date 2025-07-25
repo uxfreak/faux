@@ -16,12 +16,14 @@ interface ProjectViewerProps {
 export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-  const [terminalWidth, setTerminalWidth] = useState(30); // Default 30%
+  const [terminalWidth, setTerminalWidth] = useState(400); // Default 400px
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [closeButtonPosition, setCloseButtonPosition] = useState({ x: 0, y: 0 });
   const [isDraggingCloseButton, setIsDraggingCloseButton] = useState(false);
   const [hasBeenDragged, setHasBeenDragged] = useState(false);
+  const [isTerminalResizing, setIsTerminalResizing] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const terminalWrapperRef = useRef<HTMLDivElement>(null);
 
   // Server management
   const { serverState, startServers, stopServers, retryConnection } = useProjectServers(project);
@@ -43,9 +45,79 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
     setIsTerminalOpen(false);
   };
 
-  const handleTerminalResize = (width: number) => {
-    setTerminalWidth(width);
+  const handleTerminalResize = (widthPixels: number) => {
+    setTerminalWidth(widthPixels);
   };
+
+  // Terminal resize handling
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isTerminalResizing) return;
+      
+      // Prevent default to ensure we capture all mouse movements
+      e.preventDefault();
+      
+      // Find the project-content container
+      const container = document.querySelector('[data-section="content"]') as HTMLElement;
+      if (!container) return;
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const terminalWidthPixels = rect.width - mouseX;
+      
+      // Apply constraints
+      const minWidthPixels = 200;
+      const maxWidthPixels = rect.width * 0.75;
+      const constrainedWidth = Math.max(minWidthPixels, Math.min(maxWidthPixels, terminalWidthPixels));
+      
+      setTerminalWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      e.preventDefault();
+      setIsTerminalResizing(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.body.style.pointerEvents = '';
+    };
+
+    // Add mouseleave handler to prevent resize from stopping when cursor leaves window
+    const handleMouseLeave = (e: MouseEvent) => {
+      // Only stop resizing if mouse actually left the window, not just a child element
+      if (e.target === document.documentElement) {
+        setIsTerminalResizing(false);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.body.style.pointerEvents = '';
+      }
+    };
+
+    if (isTerminalResizing) {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.body.style.pointerEvents = 'none'; // Prevent interference from other elements
+      
+      // Use capture phase to ensure we get all events
+      document.addEventListener('mousemove', handleMouseMove, true);
+      document.addEventListener('mouseup', handleMouseUp, true);
+      document.addEventListener('mouseleave', handleMouseLeave, true);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('mouseup', handleMouseUp, true);
+      document.removeEventListener('mouseleave', handleMouseLeave, true);
+      // Clean up styles in case component unmounts during resize
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.body.style.pointerEvents = '';
+    };
+  }, [isTerminalResizing]);
+
+  const handleTerminalResizeStart = () => {
+    setIsTerminalResizing(true);
+  };
+
 
   const handleFullscreenToggle = () => {
     setIsFullscreen(!isFullscreen);
@@ -149,15 +221,15 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
 
       {/* Main Content Area */}
       <div 
-        className={`project-content flex flex-1 overflow-hidden ${isFullscreen ? 'absolute inset-0 z-50' : ''}`}
+        className={`project-content flex flex-1 overflow-hidden relative ${isFullscreen ? 'absolute inset-0 z-50' : ''}`}
         data-section="content"
         data-fullscreen={isFullscreen}
       >
         {/* Main Content */}
         <div 
-          className="main-content-wrapper flex flex-col transition-all duration-300 relative"
+          className="main-content-wrapper flex flex-col relative"
           style={{
-            width: isFullscreen ? '100%' : (isTerminalOpen ? `${100 - terminalWidth}%` : '100%')
+            width: isFullscreen ? '100%' : (isTerminalOpen ? `calc(100% - ${terminalWidth}px)` : '100%')
           }}
           data-section="main-content"
         >
@@ -212,22 +284,40 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           )}
         </div>
 
+        {/* Drag Handle - positioned between main content and terminal */}
+        {!isFullscreen && isTerminalOpen && (
+          <div
+            className="terminal-drag-handle absolute w-1 cursor-col-resize z-20 group top-0 bottom-0"
+            style={{ 
+              right: `${terminalWidth}px`,
+              marginRight: '-2px'
+            }}
+            onMouseDown={handleTerminalResizeStart}
+            title="Drag to resize terminal"
+            data-control="terminal-resize-handle"
+          >
+            <div 
+              className="w-full h-full transition-colors group-hover:bg-blue-500 group-hover:bg-opacity-50"
+              style={{ 
+                backgroundColor: isTerminalResizing ? 'var(--color-action-primary)' : 'transparent'
+              }}
+            />
+          </div>
+        )}
+
         {/* Terminal Pane - hidden in fullscreen */}
         {!isFullscreen && (
           <AnimatePresence>
             {isTerminalOpen && (
-              <motion.div
-                className="terminal-wrapper border-l"
+              <div
+                ref={terminalWrapperRef}
+                className="terminal-wrapper border-l relative"
                 style={{ 
-                  width: `${terminalWidth}%`,
+                  width: `${terminalWidth}px`,
                   borderColor: 'var(--color-border-secondary)',
                   backgroundColor: 'var(--color-bg-primary)'
                 }}
                 data-section="terminal"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: `${terminalWidth}%`, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
               >
                 <TerminalPane
                   project={project}
@@ -235,7 +325,7 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
                   onResize={handleTerminalResize}
                   data-component="terminal-pane"
                 />
-              </motion.div>
+              </div>
             )}
           </AnimatePresence>
         )}
