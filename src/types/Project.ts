@@ -3,6 +3,7 @@ export interface Project {
   name: string;
   description?: string;
   thumbnail?: string; // Base64 or file path
+  path: string; // Full path to project directory
   createdAt: Date;
   updatedAt: Date;
 }

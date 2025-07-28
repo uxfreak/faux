@@ -1,6 +1,11 @@
 import Database from 'better-sqlite3';
 import { app } from 'electron';
 import path from 'path';
+import { promises as fs } from 'fs';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+
+const execAsync = promisify(exec);
 
 export class DatabaseService {
   constructor() {
@@ -26,12 +31,21 @@ export class DatabaseService {
         name TEXT NOT NULL,
         description TEXT,
         thumbnail TEXT,
+        path TEXT NOT NULL,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       )
     `;
     
     this.db.exec(createProjectsTable);
+    
+    // Add path column to existing tables if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE projects ADD COLUMN path TEXT');
+      console.log('Added path column to existing projects table');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
     
     console.log('Database tables initialized');
   }
@@ -46,6 +60,7 @@ export class DatabaseService {
       name: row.name,
       description: row.description,
       thumbnail: row.thumbnail,
+      path: row.path,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -62,8 +77,8 @@ export class DatabaseService {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO projects (id, name, description, thumbnail, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, description, thumbnail, path, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -71,6 +86,7 @@ export class DatabaseService {
       newProject.name,
       newProject.description || null,
       newProject.thumbnail || null,
+      newProject.path,
       now,
       now
     );
@@ -102,6 +118,11 @@ export class DatabaseService {
       values.push(updates.thumbnail);
     }
     
+    if (updates.path !== undefined) {
+      fields.push('path = ?');
+      values.push(updates.path);
+    }
+    
     // Always update updatedAt
     fields.push('updatedAt = ?');
     values.push(now);
@@ -122,11 +143,55 @@ export class DatabaseService {
   }
 
   // Delete a project
-  deleteProject(id) {
+  async deleteProject(id) {
+    // First get the project to find its path
+    const project = this.getProject(id);
+    if (!project) {
+      console.log('Project not found:', id);
+      return false;
+    }
+
+    try {
+      // Delete project files from filesystem if path exists
+      if (project.path) {
+        const projectExists = await fs.access(project.path).then(() => true).catch(() => false);
+        if (projectExists) {
+          console.log('Removing project directory:', project.path);
+          
+          // Try multiple approaches for better compatibility
+          try {
+            // First try using fs.rm (Node.js v14.14.0+)
+            if (typeof fs.rm === 'function') {
+              await fs.rm(project.path, { recursive: true, force: true });
+              console.log('Project directory removed successfully using fs.rm');
+            } else {
+              throw new Error('fs.rm not available, trying alternative method');
+            }
+          } catch (fsError) {
+            console.log('fs.rm failed, trying shell command:', fsError.message);
+            try {
+              // Use shell command for maximum compatibility and reliability
+              await execAsync(`rm -rf "${project.path}"`);
+              console.log('Project directory removed successfully using shell command');
+            } catch (shellError) {
+              console.error('Shell command also failed:', shellError.message);
+              throw shellError;
+            }
+          }
+        } else {
+          console.log('Project directory does not exist:', project.path);
+        }
+      }
+    } catch (error) {
+      console.error('Error removing project directory:', error);
+      // Continue with database deletion even if file removal fails
+    }
+
+    // Delete from database
     const stmt = this.db.prepare('DELETE FROM projects WHERE id = ?');
     const result = stmt.run(id);
     
-    console.log('Project deleted:', id, result.changes > 0);
+    console.log('Project deleted from database:', id, result.changes > 0);
     return result.changes > 0;
   }
 
@@ -142,6 +207,7 @@ export class DatabaseService {
       name: row.name,
       description: row.description,
       thumbnail: row.thumbnail,
+      path: row.path,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     };

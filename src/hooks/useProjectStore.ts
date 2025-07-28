@@ -16,7 +16,7 @@ const defaultStore: ProjectStore = {
 // Check if we're running in Electron
 const isElectron = typeof window !== 'undefined' && window.electronAPI;
 
-// Generate sample projects for development
+// Generate sample projects for development (Note: These are placeholder projects for development)
 const generateSampleProjects = (): Project[] => {
   const names = ['Dashboard App', 'E-commerce Site', 'Portfolio', 'Blog Platform', 'Chat App', 'Analytics Tool'];
   
@@ -24,6 +24,7 @@ const generateSampleProjects = (): Project[] => {
     id: `project-${index + 1}`,
     name,
     description: `A modern ${name.toLowerCase()} built with React`,
+    path: `/Users/${process.env.USER || 'user'}/faux-projects/${name.toLowerCase().replace(/\s+/g, '-')}`,
     createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
     updatedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
   }));
@@ -62,7 +63,8 @@ export const useProjectStore = () => {
             const projects = parsed.projects.map((p: any) => ({
               ...p,
               createdAt: new Date(p.createdAt),
-              updatedAt: new Date(p.updatedAt)
+              updatedAt: new Date(p.updatedAt),
+              path: p.path || `/Users/${process.env.USER || 'user'}/faux-projects/${p.name.toLowerCase().replace(/\s+/g, '-')}`
             }));
             setStore({ ...parsed, projects });
           } else {
@@ -108,7 +110,8 @@ export const useProjectStore = () => {
         // Fallback for web mode
         const newProject: Project = {
           ...project,
-          id: `project-${Date.now()}`,
+          id: `project-${Date.now()}`,  
+          path: project.path || `/Users/${process.env.USER || 'user'}/faux-projects/${project.name.toLowerCase().replace(/\s+/g, '-')}`,
           createdAt: new Date(),
           updatedAt: new Date()
         };
