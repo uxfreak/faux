@@ -76,13 +76,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     capture: (projectId, serverUrl, options) => ipcRenderer.invoke('thumbnail:capture', { projectId, serverUrl, options }),
     debouncedCapture: (projectId, serverUrl, debounceMs, options) => ipcRenderer.invoke('thumbnail:debouncedCapture', { projectId, serverUrl, debounceMs, options }),
     checkServer: (serverUrl) => ipcRenderer.invoke('thumbnail:checkServer', { serverUrl }),
-    generateFallback: (projectId, projectName, options) => ipcRenderer.invoke('thumbnail:generateFallback', { projectId, projectName, options })
+    generateFallback: (projectId, projectName, options) => ipcRenderer.invoke('thumbnail:generateFallback', { projectId, projectName, options }),
+    clearAll: () => ipcRenderer.invoke('thumbnail:clearAll')
   },
 
   // Thumbnail event listeners
   onThumbnailUpdated: (callback) => {
     ipcRenderer.on('project:thumbnail-updated', (event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('project:thumbnail-updated');
+  },
+  onThumbnailsCleared: (callback) => {
+    ipcRenderer.on('project:thumbnails-cleared', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:thumbnails-cleared');
   }
 
 });

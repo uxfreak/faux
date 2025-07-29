@@ -158,6 +158,19 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
+  // Clear all thumbnails (useful for regeneration with new settings)
+  clearAllThumbnails() {
+    const stmt = this.db.prepare(`
+      UPDATE projects 
+      SET thumbnail = NULL, updatedAt = ?
+    `);
+    
+    const result = stmt.run(Date.now());
+    console.log('All thumbnails cleared:', result.changes, 'projects updated');
+    
+    return result.changes;
+  }
+
   // Delete a project
   async deleteProject(id) {
     // First get the project to find its path

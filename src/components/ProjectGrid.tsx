@@ -75,7 +75,30 @@ export const ProjectGrid = () => {
     } else {
       console.warn('⚠️ Thumbnail update API not available');
     }
-  }, [refreshProjects]);
+  }, []); // Remove refreshProjects dependency to prevent loop
+
+  // Listen for thumbnails cleared event
+  useEffect(() => {
+    if (window.electronAPI?.onThumbnailsCleared) {
+      const cleanup = window.electronAPI.onThumbnailsCleared((data) => {
+        console.log('🧹 All thumbnails cleared, refreshing projects list...');
+        refreshProjects();
+      });
+
+      return cleanup;
+    }
+  }, []); // Remove refreshProjects dependency to prevent loop
+
+  // Global function to clear and regenerate all thumbnails (for testing)
+  useEffect(() => {
+    (window as any).clearAllThumbnails = async () => {
+      if (window.electronAPI?.thumbnail.clearAll) {
+        console.log('🧹 Clearing all thumbnails...');
+        const result = await window.electronAPI.thumbnail.clearAll();
+        console.log('Thumbnails cleared:', result);
+      }
+    };
+  }, []);
 
   // Also refresh projects when currentProject changes (when navigating back)
   useEffect(() => {
@@ -84,7 +107,7 @@ export const ProjectGrid = () => {
       console.log('📊 Back to grid - refreshing projects');
       setTimeout(() => refreshProjects(), 50);
     }
-  }, [currentProject, refreshProjects]);
+  }, [currentProject]); // Removed refreshProjects from dependencies to prevent loop
 
   const handleSort = (sortBy: ProjectFilters['sortBy']) => {
     const sortOrder = filters.sortBy === sortBy && filters.sortOrder === 'desc' ? 'asc' : 'desc';

@@ -17,10 +17,10 @@ export class ThumbnailService {
    */
   async captureFromUrl(projectId, serverUrl, options = {}) {
     const {
-      width = 1920,
-      height = 1080,
-      thumbnailWidth = 600,
-      thumbnailHeight = 400,
+      width = 2560,
+      height = 1440,
+      thumbnailWidth = 800,
+      thumbnailHeight = 500,
       timeout = 10000,
       waitForLoad = 2000
     } = options;
@@ -65,6 +65,7 @@ export class ThumbnailService {
 
     try {
       console.log(`📸 Starting thumbnail capture for project ${projectId} at ${serverUrl}`);
+      console.log(`📐 Using capture dimensions: ${options.width}x${options.height} → ${options.thumbnailWidth}x${options.thumbnailHeight}`);
 
       // Create a hidden browser window for capturing
       captureWindow = new BrowserWindow({
@@ -215,11 +216,11 @@ export class ThumbnailService {
    */
   async generateFallbackThumbnail(projectName, options = {}) {
     const {
-      width = 400,
-      height = 300,
+      width = 800,
+      height = 500,
       backgroundColor = '#6B7280',
       textColor = '#FFFFFF',
-      fontSize = 48
+      fontSize = 96
     } = options;
 
     // This creates a simple colored rectangle with the first letter

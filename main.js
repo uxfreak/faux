@@ -207,6 +207,24 @@ function setupIPCHandlers() {
     }
   });
 
+  // Clear all thumbnails (for regeneration with new settings)
+  ipcMain.handle('thumbnail:clearAll', async (event) => {
+    try {
+      const clearedCount = db.clearAllThumbnails();
+      
+      // Notify renderer that projects need refreshing
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('📤 Sending thumbnails cleared event');
+        mainWindow.webContents.send('project:thumbnails-cleared', { clearedCount });
+      }
+      
+      return { success: true, clearedCount };
+    } catch (error) {
+      console.error('Error clearing thumbnails:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Terminal management IPC handlers
   const terminalManager = getTerminalManager();
 

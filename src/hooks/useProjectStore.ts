@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Project, ProjectFilters, ProjectStore } from '../types/Project';
 import '../types/electron';
 
@@ -86,7 +86,7 @@ export const useProjectStore = () => {
   }, []);
 
   // Function to refresh projects (useful after thumbnail updates)
-  const refreshProjects = async () => {
+  const refreshProjects = useCallback(async () => {
     try {
       if (isElectron) {
         console.log('🔄 Refreshing projects from database...');
@@ -101,7 +101,7 @@ export const useProjectStore = () => {
     } catch (error) {
       console.error('❌ Failed to refresh projects:', error);
     }
-  };
+  }, [isElectron]);
 
   // Save to localStorage for web mode
   useEffect(() => {

@@ -88,10 +88,12 @@ export interface ElectronAPI {
     debouncedCapture: (projectId: string, serverUrl: string, debounceMs?: number, options?: ThumbnailOptions) => Promise<ThumbnailResult>;
     checkServer: (serverUrl: string) => Promise<{ accessible: boolean }>;
     generateFallback: (projectId: string, projectName: string, options?: any) => Promise<ThumbnailResult>;
+    clearAll: () => Promise<{ success: boolean; clearedCount?: number; error?: string }>;
   };
 
   // Thumbnail event listeners
   onThumbnailUpdated: (callback: (data: { projectId: string; thumbnail: string }) => void) => () => void;
+  onThumbnailsCleared: (callback: (data: { clearedCount: number }) => void) => () => void;
 }
 
 declare global {
