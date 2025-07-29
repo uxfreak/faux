@@ -5,6 +5,7 @@ import { getDatabase } from './src/main/database.js';
 import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
 import { getThumbnailService } from './src/main/thumbnailService.js';
+import { duplicateProjectFiles } from './src/main/projectScaffold.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -222,6 +223,117 @@ function setupIPCHandlers() {
     } catch (error) {
       console.error('Error clearing thumbnails:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // Duplicate project IPC handler
+  ipcMain.handle('project:duplicate', async (event, { projectId, customName = null }) => {
+    try {
+      console.log('Starting project duplication for:', projectId);
+      
+      // Step 1: Duplicate in database
+      const dbResult = db.duplicateProject(projectId, customName);
+      if (!dbResult.success) {
+        throw new Error('Failed to create duplicate project in database');
+      }
+
+      const { sourceProject, duplicateProject } = dbResult;
+      
+      // Notify progress
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('project:duplicate-progress', {
+          projectId: duplicateProject.id,
+          status: 'info',
+          message: 'Created database entry...',
+          progress: 10
+        });
+      }
+
+      // Step 2: Copy files
+      const copyResult = await duplicateProjectFiles(
+        sourceProject.path,
+        duplicateProject.path,
+        (progress) => {
+          // Forward progress to renderer
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('project:duplicate-progress', {
+              projectId: duplicateProject.id,
+              ...progress
+            });
+          }
+        }
+      );
+
+      if (!copyResult.success) {
+        // Rollback database changes
+        try {
+          await db.deleteProject(duplicateProject.id);
+        } catch (rollbackError) {
+          console.error('Failed to rollback database changes:', rollbackError);
+        }
+        throw new Error(copyResult.error);
+      }
+
+      // Step 3: Generate fallback thumbnail
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('project:duplicate-progress', {
+          projectId: duplicateProject.id,
+          status: 'info',
+          message: 'Generating thumbnail...',
+          progress: 96
+        });
+      }
+
+      try {
+        const thumbnailService = getThumbnailService();
+        const thumbnailResult = await thumbnailService.generateFallbackThumbnail(duplicateProject.name);
+        if (thumbnailResult) {
+          db.updateProjectThumbnail(duplicateProject.id, thumbnailResult);
+        }
+      } catch (thumbnailError) {
+        console.warn('Failed to generate thumbnail for duplicate project:', thumbnailError);
+        // Non-critical error, continue
+      }
+
+      // Step 4: Complete
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('project:duplicate-progress', {
+          projectId: duplicateProject.id,
+          status: 'success',
+          message: 'Project duplicated successfully!',
+          progress: 100
+        });
+
+        // Refresh projects list
+        mainWindow.webContents.send('project:duplicate-complete', {
+          sourceProject,
+          duplicateProject
+        });
+      }
+
+      return {
+        success: true,
+        sourceProject,
+        duplicateProject
+      };
+
+    } catch (error) {
+      console.error('Project duplication failed:', error);
+      
+      // Notify error
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('project:duplicate-progress', {
+          projectId: projectId,
+          status: 'error',
+          message: error.message,
+          progress: 0
+        });
+      }
+
+      return {
+        success: false,
+        error: error.message
+      };
     }
   });
 

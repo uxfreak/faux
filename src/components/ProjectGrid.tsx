@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectCard } from './ProjectCard';
 import { CreateProjectModal } from './CreateProjectModal';
+import { DuplicateProjectModal } from './DuplicateProjectModal';
 import { ProjectViewer } from './ProjectViewer';
 import { ThemeToggle } from './ThemeToggle';
 import { Dropdown } from './Dropdown';
@@ -12,6 +13,8 @@ export const ProjectGrid = () => {
   const { projects, totalProjects, filters, setFilters, deleteProject, updateProject, addProject, refreshProjects } = useProjectStore();
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [projectToDuplicate, setProjectToDuplicate] = useState<Project | null>(null);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -89,6 +92,7 @@ export const ProjectGrid = () => {
     }
   }, []); // Remove refreshProjects dependency to prevent loop
 
+
   // Global function to clear and regenerate all thumbnails (for testing)
   useEffect(() => {
     (window as any).clearAllThumbnails = async () => {
@@ -137,6 +141,24 @@ export const ProjectGrid = () => {
 
   const handleRenameProject = (project: Project) => {
     setEditingProject(project);
+  };
+
+  const handleDuplicateProject = (project: Project) => {
+    console.log('Opening duplicate modal for:', project.name);
+    setProjectToDuplicate(project);
+    setIsDuplicateModalOpen(true);
+  };
+
+  const handleDuplicateComplete = (duplicatedProject: Project) => {
+    console.log('Duplication completed:', duplicatedProject.name);
+    // Refresh projects to show the new duplicate
+    refreshProjects();
+    setProjectToDuplicate(null);
+  };
+
+  const handleCloseDuplicateModal = () => {
+    setIsDuplicateModalOpen(false);
+    setProjectToDuplicate(null);
   };
 
   const handleCreateProject = () => {
@@ -450,6 +472,7 @@ export const ProjectGrid = () => {
                   <ProjectCard
                     project={project}
                     onRename={handleRenameProject}
+                    onDuplicate={handleDuplicateProject}
                     onDelete={handleDeleteProject}
                     onOpen={handleOpenProject}
                   />
@@ -465,6 +488,14 @@ export const ProjectGrid = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreateProject={handleCreateProjectSubmit}
+      />
+
+      {/* Duplicate Project Modal */}
+      <DuplicateProjectModal
+        isOpen={isDuplicateModalOpen}
+        project={projectToDuplicate}
+        onClose={handleCloseDuplicateModal}
+        onDuplicateComplete={handleDuplicateComplete}
       />
     </div>
   );

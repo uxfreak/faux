@@ -26,6 +26,26 @@ export interface ScaffoldResult {
   error?: string;
 }
 
+export interface DuplicateOptions {
+  projectId: string;
+  customName?: string;
+}
+
+export interface DuplicateProgress {
+  projectId: string;
+  status: 'info' | 'success' | 'error';
+  message: string;
+  progress: number;
+  timestamp?: number;
+}
+
+export interface DuplicateResult {
+  success: boolean;
+  sourceProject?: any;
+  duplicateProject?: any;  
+  error?: string;
+}
+
 export interface ThumbnailOptions {
   width?: number;
   height?: number;
@@ -72,6 +92,11 @@ export interface ElectronAPI {
   // Project scaffolding
   scaffoldProject: (options: ScaffoldOptions) => Promise<ScaffoldResult>;
   onScaffoldProgress: (callback: (data: ScaffoldProgress & { projectName: string }) => void) => void;
+
+  // Project duplication
+  duplicateProject: (projectId: string, customName?: string) => Promise<DuplicateResult>;
+  onDuplicateProgress: (callback: (data: DuplicateProgress) => void) => () => void;
+  onDuplicateComplete: (callback: (data: { sourceProject: any; duplicateProject: any }) => void) => () => void;
   
   // Database operations (existing)
   db: {

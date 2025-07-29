@@ -7,6 +7,26 @@ import os from 'os';
 
 const execAsync = promisify(exec);
 
+// File/folder exclusion patterns for project duplication
+const EXCLUDE_PATTERNS = [
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.cache',
+  '.turbo',
+  'coverage',
+  '.nyc_output',
+  '.parcel-cache',
+  '.nuxt',
+  '.output',
+  '.vercel',
+  '.netlify',
+  'tmp',
+  'temp'
+];
+
 // Get the projects directory (~/faux-projects)
 const getProjectsDirectory = () => {
   const homeDir = os.homedir();
@@ -348,9 +368,7 @@ export default App`;
     {
       name: '@storybook/addon-postcss',
       options: {
-        postcssLoaderOptions: {
-          implementation: require('postcss'),
-        },
+        postcssLoaderOptions: {},
       },
     },
   ]`
@@ -488,5 +506,185 @@ export const Default: Story = {};`;
       steps,
       projectPath
     };
+  }
+};
+
+// Duplicate project files with smart exclusions
+export const duplicateProjectFiles = async (sourcePath, destPath, progressCallback = null) => {
+  console.log('Starting project file duplication...');
+  console.log('Source:', sourcePath);
+  console.log('Destination:', destPath);
+
+  const updateProgress = (status, message, progress = 0) => {
+    if (progressCallback) {
+      progressCallback({
+        status,
+        message,
+        progress,
+        timestamp: Date.now()
+      });
+    }
+    console.log(`[${status}] ${message} (${progress}%)`);
+  };
+
+  try {
+    // Validate source exists
+    if (!(await directoryExists(sourcePath))) {
+      throw new Error(`Source project directory does not exist: ${sourcePath}`);
+    }
+
+    // Check if destination already exists
+    if (await directoryExists(destPath)) {
+      throw new Error(`Destination directory already exists: ${destPath}`);
+    }
+
+    updateProgress('info', 'Analyzing source project...', 5);
+
+    // Get total size and file count for progress tracking
+    const { totalSize, totalFiles } = await analyzeProjectSize(sourcePath);
+    console.log(`Project analysis: ${totalFiles} files, ${(totalSize / 1024 / 1024).toFixed(2)} MB`);
+
+    updateProgress('info', `Copying ${totalFiles} files (${(totalSize / 1024 / 1024).toFixed(2)} MB)...`, 10);
+
+    // Create destination directory
+    await createDirectory(destPath);
+
+    // Copy files with exclusions and progress tracking
+    let copiedSize = 0;
+    await copyDirectoryRecursive(sourcePath, destPath, (fileSize) => {
+      copiedSize += fileSize;
+      const progress = Math.min(90, 10 + (copiedSize / totalSize) * 70); // 10-80% for copying
+      updateProgress('info', 'Copying files...', Math.floor(progress));
+    });
+
+    updateProgress('info', 'Updating project configuration...', 85);
+
+    // Update package.json with new project name
+    await updateProjectConfig(destPath, path.basename(destPath));
+
+    updateProgress('info', 'Installing dependencies...', 90);
+
+    // Install dependencies in the duplicated project
+    try {
+      await execAsync('npm install', { cwd: destPath });
+      console.log('Dependencies installed successfully in duplicated project');
+    } catch (installError) {
+      console.warn('Failed to install dependencies (non-critical):', installError.message);
+      // Continue without failing the duplication
+    }
+
+    updateProgress('success', 'Project duplicated successfully!', 100);
+
+    return {
+      success: true,
+      sourcePath,
+      destPath,
+      totalFiles,
+      totalSize
+    };
+
+  } catch (error) {
+    console.error('Failed to duplicate project files:', error);
+    
+    // Cleanup on failure
+    try {
+      if (await directoryExists(destPath)) {
+        updateProgress('info', 'Cleaning up failed duplication...', 0);
+        await fs.rm(destPath, { recursive: true, force: true });
+      }
+    } catch (cleanupError) {
+      console.error('Failed to cleanup after duplication error:', cleanupError);
+    }
+
+    updateProgress('error', error.message, 0);
+    
+    return {
+      success: false,
+      error: error.message,
+      sourcePath,
+      destPath
+    };
+  }
+};
+
+// Analyze project size for progress tracking
+const analyzeProjectSize = async (dirPath) => {
+  let totalSize = 0;
+  let totalFiles = 0;
+
+  const analyzeRecursive = async (currentPath) => {
+    const items = await fs.readdir(currentPath);
+    
+    for (const item of items) {
+      // Skip excluded patterns
+      if (EXCLUDE_PATTERNS.includes(item)) {
+        continue;
+      }
+
+      const itemPath = path.join(currentPath, item);
+      const stats = await fs.stat(itemPath);
+
+      if (stats.isDirectory()) {
+        await analyzeRecursive(itemPath);
+      } else {
+        totalSize += stats.size;
+        totalFiles++;
+      }
+    }
+  };
+
+  await analyzeRecursive(dirPath);
+  return { totalSize, totalFiles };
+};
+
+// Copy directory recursively with exclusions
+const copyDirectoryRecursive = async (src, dest, progressCallback = null) => {
+  const items = await fs.readdir(src);
+
+  for (const item of items) {
+    // Skip excluded patterns
+    if (EXCLUDE_PATTERNS.includes(item)) {
+      console.log('Skipping excluded item:', item);
+      continue;
+    }
+
+    const srcPath = path.join(src, item);
+    const destPath = path.join(dest, item);
+    const stats = await fs.stat(srcPath);
+
+    if (stats.isDirectory()) {
+      // Create directory and recurse
+      await createDirectory(destPath);
+      await copyDirectoryRecursive(srcPath, destPath, progressCallback);
+    } else {
+      // Copy file
+      await fs.copyFile(srcPath, destPath);
+      if (progressCallback) {
+        progressCallback(stats.size);
+      }
+    }
+  }
+};
+
+// Update project configuration files
+const updateProjectConfig = async (projectPath, newProjectName) => {
+  const packageJsonPath = path.join(projectPath, 'package.json');
+  
+  try {
+    if (await fileExists(packageJsonPath)) {
+      const packageJson = JSON.parse(await readFile(packageJsonPath));
+      
+      // Update name field
+      packageJson.name = newProjectName;
+      
+      // Remove any version/private fields that might conflict
+      delete packageJson.version;
+      
+      await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+      console.log('Updated package.json name to:', newProjectName);
+    }
+  } catch (error) {
+    console.warn('Failed to update package.json:', error.message);
+    // Non-critical error, continue
   }
 };

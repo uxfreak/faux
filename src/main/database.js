@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { app } from 'electron';
 import path from 'path';
+import os from 'os';
 import { promises as fs } from 'fs';
 import { promisify } from 'util';
 import { exec } from 'child_process';
@@ -169,6 +170,108 @@ export class DatabaseService {
     console.log('All thumbnails cleared:', result.changes, 'projects updated');
     
     return result.changes;
+  }
+
+  // Duplicate a project with smart name resolution
+  duplicateProject(sourceId, customName = null) {
+    // First get the source project
+    const sourceProject = this.getProject(sourceId);
+    if (!sourceProject) {
+      throw new Error(`Source project not found: ${sourceId}`);
+    }
+
+    console.log('Duplicating project:', sourceProject.name);
+    
+    // Generate unique name using smart resolution
+    const duplicateName = customName || this.generateUniqueName(sourceProject.name);
+    
+    // Generate unique path
+    const duplicatePath = this.generateUniquePath(duplicateName);
+    
+    // Create new project data
+    const now = Date.now();
+    const duplicateProject = {
+      id: `project-${now}-${Math.random().toString(36).substr(2, 9)}`,
+      name: duplicateName,
+      description: sourceProject.description ? `Copy of ${sourceProject.description}` : '',
+      thumbnail: null, // Will be regenerated later
+      path: duplicatePath,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    // Insert into database
+    const stmt = this.db.prepare(`
+      INSERT INTO projects (id, name, description, thumbnail, path, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    try {
+      stmt.run(
+        duplicateProject.id,
+        duplicateProject.name,
+        duplicateProject.description,
+        duplicateProject.thumbnail,
+        duplicateProject.path,
+        duplicateProject.createdAt,
+        duplicateProject.updatedAt
+      );
+
+      console.log('Project duplicated in database:', duplicateProject.name);
+      return {
+        success: true,
+        sourceProject,
+        duplicateProject
+      };
+    } catch (error) {
+      console.error('Failed to duplicate project in database:', error);
+      throw error;
+    }
+  }
+
+  // Generate unique project name with smart conflict resolution
+  generateUniqueName(baseName) {
+    const allProjects = this.getAllProjects();
+    const existingNames = new Set(allProjects.map(p => p.name.toLowerCase()));
+    
+    // Try "Copy of X" first
+    let candidateName = `Copy of ${baseName}`;
+    if (!existingNames.has(candidateName.toLowerCase())) {
+      return candidateName;
+    }
+    
+    // Try "X 2", "X 3", etc.
+    let counter = 2;
+    do {
+      candidateName = `${baseName} ${counter}`;
+      counter++;
+    } while (existingNames.has(candidateName.toLowerCase()) && counter < 1000);
+    
+    if (counter >= 1000) {
+      // Fallback to timestamp-based name
+      candidateName = `${baseName} ${Date.now()}`;
+    }
+    
+    console.log('Generated unique name:', candidateName);
+    return candidateName;
+  }
+
+  // Generate unique project path
+  generateUniquePath(projectName) {
+    
+    // Convert name to filesystem-safe format
+    const safeName = projectName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Collapse multiple hyphens
+      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    const baseDir = path.join(os.homedir(), 'faux-projects');
+    const projectPath = path.join(baseDir, safeName);
+    
+    console.log('Generated project path:', projectPath);
+    return projectPath;
   }
 
   // Delete a project

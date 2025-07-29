@@ -71,6 +71,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('project:scaffold-progress');
   },
 
+  // Project duplication API
+  duplicateProject: (projectId, customName) => ipcRenderer.invoke('project:duplicate', { projectId, customName }),
+  onDuplicateProgress: (callback) => {
+    ipcRenderer.on('project:duplicate-progress', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:duplicate-progress');
+  },
+  onDuplicateComplete: (callback) => {
+    ipcRenderer.on('project:duplicate-complete', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:duplicate-complete');
+  },
+
   // Thumbnail API
   thumbnail: {
     capture: (projectId, serverUrl, options) => ipcRenderer.invoke('thumbnail:capture', { projectId, serverUrl, options }),
