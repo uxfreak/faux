@@ -26,6 +26,21 @@ export interface ScaffoldResult {
   error?: string;
 }
 
+export interface ThumbnailOptions {
+  width?: number;
+  height?: number;
+  thumbnailWidth?: number;
+  thumbnailHeight?: number;
+  timeout?: number;
+  waitForLoad?: number;
+}
+
+export interface ThumbnailResult {
+  success: boolean;
+  thumbnail?: string;
+  error?: string;
+}
+
 export interface ElectronAPI {
   // Server management
   startServers: (projectConfig: ProjectConfig) => Promise<void>;
@@ -66,6 +81,17 @@ export interface ElectronAPI {
     deleteProject: (id: string) => Promise<void>;
     getProject: (id: string) => Promise<any>;
   };
+
+  // Thumbnail operations
+  thumbnail: {
+    capture: (projectId: string, serverUrl: string, options?: ThumbnailOptions) => Promise<ThumbnailResult>;
+    debouncedCapture: (projectId: string, serverUrl: string, debounceMs?: number, options?: ThumbnailOptions) => Promise<ThumbnailResult>;
+    checkServer: (serverUrl: string) => Promise<{ accessible: boolean }>;
+    generateFallback: (projectId: string, projectName: string, options?: any) => Promise<ThumbnailResult>;
+  };
+
+  // Thumbnail event listeners
+  onThumbnailUpdated: (callback: (data: { projectId: string; thumbnail: string }) => void) => () => void;
 }
 
 declare global {

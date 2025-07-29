@@ -85,6 +85,24 @@ export const useProjectStore = () => {
     loadProjects();
   }, []);
 
+  // Function to refresh projects (useful after thumbnail updates)
+  const refreshProjects = async () => {
+    try {
+      if (isElectron) {
+        console.log('🔄 Refreshing projects from database...');
+        const projects = await window.electronAPI.db.getAllProjects();
+        console.log('📊 Received projects from database:', projects?.length || 0, 'projects');
+        setStore(prev => ({
+          ...prev,
+          projects: projects || []
+        }));
+        console.log('✅ Projects store updated successfully');
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh projects:', error);
+    }
+  };
+
   // Save to localStorage for web mode
   useEffect(() => {
     if (!isElectron && store.projects.length > 0) {
@@ -101,6 +119,21 @@ export const useProjectStore = () => {
       if (isElectron) {
         const newProject = await window.electronAPI.db.addProject(project);
         console.log('Project added to database:', newProject.name);
+        
+        // Generate fallback thumbnail for new projects immediately
+        if (window.electronAPI.thumbnail) {
+          try {
+            console.log('🎨 Generating fallback thumbnail for new project:', newProject.name);
+            await window.electronAPI.thumbnail.generateFallback(
+              newProject.id, 
+              newProject.name
+            );
+            console.log('✅ Fallback thumbnail generated successfully');
+          } catch (error) {
+            console.warn('⚠️ Failed to generate fallback thumbnail:', error);
+          }
+        }
+        
         setStore(prev => ({
           ...prev,
           projects: [newProject, ...prev.projects]
@@ -213,6 +246,7 @@ export const useProjectStore = () => {
     addProject,
     updateProject,
     deleteProject,
-    setFilters
+    setFilters,
+    refreshProjects
   };
 };

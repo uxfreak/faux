@@ -20,19 +20,6 @@ export const ProjectCard = ({ project, onRename, onDelete, onOpen }: ProjectCard
     }).format(date);
   };
 
-  const generateThumbnail = () => {
-    return (
-      <div 
-        className="w-full flex items-center justify-center text-white text-xl font-bold"
-        style={{ 
-          backgroundColor: '#6B7280',
-          height: '160px' // Larger thumbnail for taller cards
-        }}
-      >
-        {project.name.charAt(0).toUpperCase()}
-      </div>
-    );
-  };
 
   return (
     <div
@@ -70,10 +57,29 @@ export const ProjectCard = ({ project, onRename, onDelete, onOpen }: ProjectCard
             style={{
               height: '160px'
             }}
+            onError={(e) => {
+              console.warn('Failed to load thumbnail for project:', project.name);
+              // Hide the broken image and show fallback
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.nextElementSibling?.setAttribute('style', 'display: flex');
+            }}
+            onLoad={() => {
+              console.log('Thumbnail loaded successfully for project:', project.name);
+            }}
           />
-        ) : (
-          generateThumbnail()
-        )}
+        ) : null}
+        
+        {/* Fallback thumbnail - shown when no thumbnail or when image fails to load */}
+        <div 
+          style={{ 
+            display: project.thumbnail ? 'none' : 'flex',
+            backgroundColor: '#6B7280',
+            height: '160px' 
+          }}
+          className="w-full flex items-center justify-center text-white text-xl font-bold"
+        >
+          {project.name.charAt(0).toUpperCase()}
+        </div>
         
         {/* Hover overlay with kebab menu */}
         {isHovered && (

@@ -5,6 +5,7 @@ import { MainContent } from './MainContent';
 import { TerminalPane } from './TerminalPane';
 import { Project } from '../types/Project';
 import { useProjectServers } from '../hooks/useProjectServers';
+import { useThumbnails } from '../hooks/useThumbnails';
 
 export type ViewMode = 'preview' | 'components';
 
@@ -28,10 +29,86 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   // Server management
   const { serverState, startServers, stopServers, retryConnection } = useProjectServers(project);
 
+  // Thumbnail management
+  const { 
+    captureOnProjectOpen, 
+    captureThumbnail, 
+    cleanup: cleanupThumbnails 
+  } = useThumbnails({
+    autoCapture: true,
+    captureOnOpen: true,
+    periodicCapture: true,
+    periodicInterval: 30000, // 30 seconds
+    debounceMs: 5000
+  });
+
   // Auto-start servers when project opens
   useEffect(() => {
     startServers();
   }, [project.id]); // Re-start if project changes
+
+  // Capture thumbnails when servers become available
+  useEffect(() => {
+    const captureFromServer = async () => {
+      // For preview mode, use Vite server
+      if (viewMode === 'preview' && serverState.viteServer?.status === 'running' && serverState.viteServer.url) {
+        console.log('📸 Vite server ready, capturing thumbnail for preview mode');
+        await captureOnProjectOpen(project, serverState.viteServer.url);
+      }
+      // For components mode, use Storybook server
+      else if (viewMode === 'components' && serverState.storybookServer?.status === 'running' && serverState.storybookServer.url) {
+        console.log('📸 Storybook server ready, capturing thumbnail for components mode');
+        await captureOnProjectOpen(project, serverState.storybookServer.url);
+      }
+    };
+
+    captureFromServer();
+  }, [
+    project.id,
+    viewMode,
+    serverState.viteServer?.status,
+    serverState.viteServer?.url,
+    serverState.storybookServer?.status,
+    serverState.storybookServer?.url,
+    captureOnProjectOpen
+  ]);
+
+  // Cleanup thumbnails when component unmounts or project changes
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Cleaning up thumbnails for project:', project.name);
+      cleanupThumbnails(project.id);
+    };
+  }, [project.id, cleanupThumbnails]);
+
+  // Manual thumbnail refresh
+  const handleThumbnailRefresh = async () => {
+    try {
+      console.log('🔄 Manual thumbnail refresh requested for project:', project.name);
+      
+      let serverUrl: string | undefined;
+      
+      // Use the appropriate server based on current view mode
+      if (viewMode === 'preview' && serverState.viteServer?.url) {
+        serverUrl = serverState.viteServer.url;
+      } else if (viewMode === 'components' && serverState.storybookServer?.url) {
+        serverUrl = serverState.storybookServer.url;
+      }
+      
+      if (serverUrl) {
+        const result = await captureThumbnail(project.id, serverUrl);
+        if (result.success) {
+          console.log('✅ Manual thumbnail refresh successful');
+        } else {
+          console.warn('❌ Manual thumbnail refresh failed:', result.error);
+        }
+      } else {
+        console.warn('🚫 No server available for thumbnail refresh');
+      }
+    } catch (error) {
+      console.error('❌ Manual thumbnail refresh error:', error);
+    }
+  };
 
   const handleModeChange = (mode: ViewMode) => {
     console.log('🔄 Mode change requested:', { from: viewMode, to: mode });
@@ -233,6 +310,7 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           onModeChange={handleModeChange}
           onTerminalToggle={handleTerminalToggle}
           onFullscreenToggle={handleFullscreenToggle}
+          onThumbnailRefresh={handleThumbnailRefresh}
           data-section="header"
         />
       )}

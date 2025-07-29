@@ -16,6 +16,7 @@ interface ProjectHeaderProps {
   onModeChange: (mode: ViewMode) => void;
   onTerminalToggle: () => void;
   onFullscreenToggle: () => void;
+  onThumbnailRefresh?: () => void;
   'data-section'?: string;
 }
 
@@ -29,6 +30,7 @@ export const ProjectHeader = ({
   onModeChange,
   onTerminalToggle,
   onFullscreenToggle,
+  onThumbnailRefresh,
   'data-section': dataSection 
 }: ProjectHeaderProps) => {
   return (
@@ -125,6 +127,38 @@ export const ProjectHeader = ({
           onModeChange={onModeChange}
           data-control="mode-toggle"
         />
+        
+        {/* Thumbnail Refresh Button */}
+        {onThumbnailRefresh && (
+          <>
+            <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
+            <motion.button
+              onClick={onThumbnailRefresh}
+              className="thumbnail-refresh p-2 transition-colors"
+              style={{
+                color: 'var(--color-text-secondary)',
+                backgroundColor: 'transparent'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--color-text-primary)';
+                e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--color-text-secondary)';
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              title="Refresh thumbnail"
+              data-control="thumbnail-refresh"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </motion.button>
+          </>
+        )}
         
         {/* Server Status Indicator - passive display only */}
         {(serverState.viteServer || serverState.storybookServer) && (

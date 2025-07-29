@@ -142,6 +142,22 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
+  // Update project thumbnail only
+  updateProjectThumbnail(id, thumbnailData) {
+    const now = Date.now();
+    
+    const stmt = this.db.prepare(`
+      UPDATE projects 
+      SET thumbnail = ?, updatedAt = ?
+      WHERE id = ?
+    `);
+    
+    const result = stmt.run(thumbnailData, now, id);
+    console.log('Project thumbnail updated:', id, result.changes > 0);
+    
+    return result.changes > 0;
+  }
+
   // Delete a project
   async deleteProject(id) {
     // First get the project to find its path

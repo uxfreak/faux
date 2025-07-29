@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import os from 'os';
 import path from 'path';
 import { scaffoldProject } from './projectScaffold.js';
+import { getThumbnailService } from './thumbnailService.js';
 import getPort from 'get-port';
 import { request } from 'http';
 import { createServer as createViteServer } from 'vite';

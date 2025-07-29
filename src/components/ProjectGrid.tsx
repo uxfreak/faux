@@ -9,7 +9,7 @@ import { ProjectFilters, Project } from '../types/Project';
 import { useProjectStore } from '../hooks/useProjectStore';
 
 export const ProjectGrid = () => {
-  const { projects, totalProjects, filters, setFilters, deleteProject, updateProject, addProject } = useProjectStore();
+  const { projects, totalProjects, filters, setFilters, deleteProject, updateProject, addProject, refreshProjects } = useProjectStore();
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -57,6 +57,35 @@ export const ProjectGrid = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isSearchExpanded, filters.search]);
 
+  // Listen for thumbnail updates and refresh projects
+  useEffect(() => {
+    console.log('🔗 Setting up thumbnail update listener in ProjectGrid');
+    
+    if (window.electronAPI?.onThumbnailUpdated) {
+      const cleanup = window.electronAPI.onThumbnailUpdated((data) => {
+        console.log('📸 ProjectGrid received thumbnail update for project:', data.projectId);
+        console.log('🔄 Refreshing projects list...');
+        // Always refresh the projects list to show the new thumbnail
+        // This works even when we're in ProjectViewer mode
+        refreshProjects();
+      });
+
+      console.log('✅ Thumbnail update listener setup complete');
+      return cleanup;
+    } else {
+      console.warn('⚠️ Thumbnail update API not available');
+    }
+  }, [refreshProjects]);
+
+  // Also refresh projects when currentProject changes (when navigating back)
+  useEffect(() => {
+    if (currentProject === null) {
+      // We just navigated back to the grid
+      console.log('📊 Back to grid - refreshing projects');
+      setTimeout(() => refreshProjects(), 50);
+    }
+  }, [currentProject, refreshProjects]);
+
   const handleSort = (sortBy: ProjectFilters['sortBy']) => {
     const sortOrder = filters.sortBy === sortBy && filters.sortOrder === 'desc' ? 'asc' : 'desc';
     setFilters({ sortBy, sortOrder });
@@ -74,7 +103,13 @@ export const ProjectGrid = () => {
   };
 
   const handleBackToGrid = () => {
+    console.log('🔙 Navigating back to project grid');
     setCurrentProject(null);
+    // Refresh projects when returning to grid to show any thumbnail updates
+    setTimeout(() => {
+      console.log('🔄 Refreshing projects after returning to grid');
+      refreshProjects();
+    }, 100); // Small delay to ensure component is rendered
   };
 
   const handleRenameProject = (project: Project) => {

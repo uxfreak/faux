@@ -137,20 +137,31 @@ export const scaffoldProject = async (options, progressCallback) => {
     updateProgress('active');
     
     console.log('Setting up Tailwind CSS...');
-    await execAsync('npm install tailwindcss @tailwindcss/vite', { cwd: projectPath });
+    await execAsync('npm install -D tailwindcss @tailwindcss/postcss autoprefixer', { cwd: projectPath });
     
-    // Update vite.config.ts for Tailwind
+    // Create PostCSS configuration for Tailwind v4
+    const postCssConfig = `export default {
+  plugins: {
+    '@tailwindcss/postcss': {},
+    autoprefixer: {},
+  },
+}`;
+    await writeFile(path.join(projectPath, 'postcss.config.js'), postCssConfig);
+    
+    // Update vite.config.ts with explicit PostCSS configuration for Tailwind v4
     const viteConfigPath = path.join(projectPath, 'vite.config.ts');
     if (await fileExists(viteConfigPath)) {
-      const viteConfig = await readFile(viteConfigPath);
-      const updatedConfig = viteConfig.replace(
-        "import { defineConfig } from 'vite'",
-        "import { defineConfig } from 'vite'\nimport tailwindcss from '@tailwindcss/vite'"
-      ).replace(
-        'plugins: [react()]',
-        'plugins: [react(), tailwindcss()]'
-      );
-      await writeFile(viteConfigPath, updatedConfig);
+      const viteConfig = `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  css: {
+    postcss: './postcss.config.js',
+  },
+})`;
+      await writeFile(viteConfigPath, viteConfig);
     }
 
     // Create Tailwind config
@@ -167,11 +178,9 @@ export default {
 }`;
     await writeFile(path.join(projectPath, 'tailwind.config.js'), tailwindConfig);
 
-    // Update src/index.css with Tailwind directives
+    // Update src/index.css with Tailwind v4 import syntax
     const indexCssPath = path.join(projectPath, 'src', 'index.css');
-    const indexCssContent = `@tailwind base;
-@tailwind components;
-@tailwind utilities;
+    const indexCssContent = `@import "tailwindcss";
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -444,6 +453,22 @@ export const Default: Story = {};`;
     updateProgress('completed');
 
     console.log(`Project ${projectName} scaffolded successfully at ${projectPath}`);
+    
+    // Add Claude MCP Figma integration in the background
+    try {
+      console.log('Setting up Claude MCP Figma integration...');
+      execAsync('claude mcp add --transport sse figma-dev-mode-mcp-server http://127.0.0.1:3845/sse', {
+        cwd: projectPath,
+        timeout: 10000 // 10 second timeout
+      }).then(() => {
+        console.log('Claude MCP Figma integration added successfully');
+      }).catch((error) => {
+        console.log('Failed to add Claude MCP Figma integration (non-critical):', error.message);
+      });
+    } catch (error) {
+      // Non-critical error, don't fail the scaffolding
+      console.log('Claude MCP setup failed (non-critical):', error.message);
+    }
     
     return {
       success: true,

@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import { getDatabase } from './src/main/database.js';
 import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
+import { getThumbnailService } from './src/main/thumbnailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -126,6 +127,83 @@ function setupIPCHandlers() {
     } catch (error) {
       console.error('Error getting project:', error);
       throw error;
+    }
+  });
+
+  // Thumbnail management IPC handlers
+  const thumbnailService = getThumbnailService();
+
+  // Capture thumbnail from server URL
+  ipcMain.handle('thumbnail:capture', async (event, { projectId, serverUrl, options = {} }) => {
+    try {
+      const thumbnail = await thumbnailService.captureFromUrl(projectId, serverUrl, options);
+      
+      // Update database with new thumbnail
+      db.updateProjectThumbnail(projectId, thumbnail);
+      
+      // Notify renderer that project data has changed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('📤 Sending thumbnail update event for project:', projectId);
+        mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
+      }
+      
+      return { success: true, thumbnail };
+    } catch (error) {
+      console.error('Error capturing thumbnail:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Capture thumbnail with debouncing
+  ipcMain.handle('thumbnail:debouncedCapture', async (event, { projectId, serverUrl, debounceMs = 5000, options = {} }) => {
+    try {
+      const thumbnail = await thumbnailService.debouncedCapture(projectId, serverUrl, debounceMs, options);
+      
+      // Update database with new thumbnail
+      db.updateProjectThumbnail(projectId, thumbnail);
+      
+      // Notify renderer that project data has changed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('📤 Sending thumbnail update event for project:', projectId);
+        mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
+      }
+      
+      return { success: true, thumbnail };
+    } catch (error) {
+      console.error('Error capturing debounced thumbnail:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Check if server is accessible for thumbnail capture
+  ipcMain.handle('thumbnail:checkServer', async (event, { serverUrl }) => {
+    try {
+      const accessible = await thumbnailService.isServerAccessible(serverUrl);
+      return { accessible };
+    } catch (error) {
+      console.error('Error checking server accessibility:', error);
+      return { accessible: false };
+    }
+  });
+
+  // Generate fallback thumbnail
+  ipcMain.handle('thumbnail:generateFallback', async (event, { projectId, projectName, options = {} }) => {
+    try {
+      const thumbnail = await thumbnailService.generateFallbackThumbnail(projectName, options);
+      
+      // Update database with fallback thumbnail
+      db.updateProjectThumbnail(projectId, thumbnail);
+      
+      // Notify renderer that project data has changed
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('📤 Sending thumbnail update event for project:', projectId);
+        mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
+      }
+      
+      return { success: true, thumbnail };
+    } catch (error) {
+      console.error('Error generating fallback thumbnail:', error);
+      return { success: false, error: error.message };
     }
   });
 
