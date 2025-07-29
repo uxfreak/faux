@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 import { Project } from '../types/Project';
 import { ViewMode } from './ProjectViewer';
 import { ContentLoader } from './ContentLoader';
@@ -22,14 +23,48 @@ export const MainContent = ({
   onRetryConnection,
   'data-content': dataContent 
 }: MainContentProps) => {
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  const renderServerContent = (serverUrl: string, serverName: string, icon: React.ReactNode) => {
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []);
+  
+  const renderServerContent = (serverUrl: string, serverName: string, icon: React.ReactNode, isStorybook = false) => {
+    const finalUrl = serverUrl;
+    
+    console.log('🎬 Rendering server content:', {
+      serverName,
+      isStorybook,
+      serverUrl,
+      finalUrl,
+      projectId: project.id
+    });
+    
+    const handleIframeRef = (iframe: HTMLIFrameElement | null) => {
+      if (!iframe) {
+        console.log('🗑️ Iframe removed, cleaning up');
+        // Cleanup when iframe is removed
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        return;
+      }
+      
+    };
+    
     return (
       <div className="server-content flex flex-col flex-1 overflow-hidden">
         {/* Embedded Server Content */}
         <div className="server-iframe-container flex-1 relative">
           <iframe
-            src={serverUrl}
+            ref={handleIframeRef}
+            src={finalUrl}
             className="w-full h-full border-0"
             title={`${serverName} - ${project.name}`}
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
@@ -129,25 +164,29 @@ export const MainContent = ({
   };
 
   const renderContent = () => {
-    // Show error state if there's an error
-    if (serverState.error) {
-      return renderErrorState(serverState.error);
-    }
+    try {
+      // Show error state if there's an error
+      if (serverState.error) {
+        return renderErrorState(serverState.error);
+      }
 
-    // Show loading state if servers are starting
-    if (serverState.isStarting) {
-      return (
-        <div className="loading-content flex items-center justify-center flex-1">
-          <ContentLoader
-            message="Starting development servers..."
-            size="large"
-          />
-        </div>
-      );
-    }
+      // Show loading state if servers are starting
+      if (serverState.isStarting) {
+        return (
+          <div className="loading-content flex items-center justify-center flex-1">
+            <ContentLoader
+              message="Starting development servers..."
+              size="large"
+            />
+          </div>
+        );
+      }
 
+      console.log('🎭 Rendering content for mode:', viewMode);
+    
     switch (viewMode) {
       case 'preview':
+        console.log('🔍 Preview mode - Vite server check:', !!serverState.viteServer?.url);
         if (serverState.viteServer?.url) {
           return renderServerContent(
             serverState.viteServer.url,
@@ -168,13 +207,15 @@ export const MainContent = ({
         );
       
       case 'components':
+        console.log('📚 Components mode - Storybook server check:', !!serverState.storybookServer?.url);
         if (serverState.storybookServer?.url) {
           return renderServerContent(
             serverState.storybookServer.url,
             'Storybook',
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
+            </svg>,
+            true // isStorybook = true
           );
         }
         return renderPlaceholder(
@@ -187,6 +228,21 @@ export const MainContent = ({
       
       default:
         return null;
+    }
+    } catch (error) {
+      console.error('❌ Error in MainContent renderContent:', error);
+      return (
+        <div className="error-content flex items-center justify-center flex-1">
+          <div className="error-placeholder text-center">
+            <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              Render Error
+            </h3>
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              {error instanceof Error ? error.message : 'Unknown error occurred'}
+            </p>
+          </div>
+        </div>
+      );
     }
   };
 

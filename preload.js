@@ -69,5 +69,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onScaffoldProgress: (callback) => {
     ipcRenderer.on('project:scaffold-progress', (event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('project:scaffold-progress');
-  }
+  },
+
 });

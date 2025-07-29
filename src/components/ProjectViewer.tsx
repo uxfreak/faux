@@ -34,8 +34,17 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   }, [project.id]); // Re-start if project changes
 
   const handleModeChange = (mode: ViewMode) => {
-    setViewMode(mode);
+    console.log('🔄 Mode change requested:', { from: viewMode, to: mode });
+    try {
+      setViewMode(mode);
+      console.log('✅ Mode change successful');
+    } catch (error) {
+      console.error('❌ Error during mode change:', error);
+    }
   };
+
+  
+  
 
   const handleTerminalToggle = () => {
     setIsTerminalOpen(!isTerminalOpen);

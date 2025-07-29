@@ -19,7 +19,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: join(__dirname, 'preload.js')
+      preload: join(__dirname, 'preload.js'),
     }
   });
 
@@ -242,6 +242,7 @@ function setupIPCHandlers() {
       throw error;
     }
   });
+
 
   // Forward terminal events to renderer
   terminalManager.on('terminal:data', (data) => {
