@@ -226,6 +226,44 @@ function setupIPCHandlers() {
     }
   });
 
+  // Rename project IPC handler
+  ipcMain.handle('project:rename', async (event, { projectId, newName }) => {
+    try {
+      console.log('Renaming project:', projectId, '→', newName);
+      
+      const result = await db.renameProject(projectId, newName);
+      
+      if (result.success) {
+        console.log('Project renamed successfully:', result.newName);
+        
+        // Notify renderer of successful rename
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('project:renamed', {
+            projectId,
+            oldName: result.oldName,
+            newName: result.newName,
+            oldPath: result.oldPath,
+            newPath: result.newPath
+          });
+        }
+        
+        return {
+          success: true,
+          ...result
+        };
+      } else {
+        throw new Error('Rename operation failed');
+      }
+      
+    } catch (error) {
+      console.error('Project rename failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
   // Duplicate project IPC handler
   ipcMain.handle('project:duplicate', async (event, { projectId, customName = null }) => {
     try {

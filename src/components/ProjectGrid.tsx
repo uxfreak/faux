@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectCard } from './ProjectCard';
 import { CreateProjectModal } from './CreateProjectModal';
 import { DuplicateProjectModal } from './DuplicateProjectModal';
+import { RenameProjectModal } from './RenameProjectModal';
 import { ProjectViewer } from './ProjectViewer';
 import { ThemeToggle } from './ThemeToggle';
 import { Dropdown } from './Dropdown';
@@ -140,7 +141,33 @@ export const ProjectGrid = () => {
   };
 
   const handleRenameProject = (project: Project) => {
+    console.log('Opening rename modal for:', project.name);
     setEditingProject(project);
+  };
+
+  const handleRenameComplete = async (project: Project, newName: string) => {
+    try {
+      console.log('Renaming project:', project.name, '→', newName);
+      
+      // Use the new rename API that handles both database and filesystem
+      const result = await window.electronAPI.renameProject(project.id, newName);
+      
+      if (result.success) {
+        console.log('Project renamed successfully:', result.newName);
+        console.log('Folder path updated:', result.oldPath, '→', result.newPath);
+        // Refresh projects to show the updated name and path
+        refreshProjects();
+      } else {
+        throw new Error(result.error || 'Failed to rename project');
+      }
+    } catch (error) {
+      console.error('Failed to rename project:', error);
+      throw new Error(error instanceof Error ? error.message : 'Failed to rename project');
+    }
+  };
+
+  const handleCloseRenameModal = () => {
+    setEditingProject(null);
   };
 
   const handleDuplicateProject = (project: Project) => {
@@ -496,6 +523,15 @@ export const ProjectGrid = () => {
         project={projectToDuplicate}
         onClose={handleCloseDuplicateModal}
         onDuplicateComplete={handleDuplicateComplete}
+      />
+
+      {/* Rename Project Modal */}
+      <RenameProjectModal
+        isOpen={!!editingProject}
+        project={editingProject}
+        onClose={handleCloseRenameModal}
+        onRename={handleRenameComplete}
+        existingProjects={projects}
       />
     </div>
   );

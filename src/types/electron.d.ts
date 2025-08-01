@@ -46,6 +46,15 @@ export interface DuplicateResult {
   error?: string;
 }
 
+export interface RenameResult {
+  success: boolean;
+  error?: string;
+  oldName?: string;
+  newName?: string;
+  oldPath?: string;
+  newPath?: string;
+}
+
 export interface ThumbnailOptions {
   width?: number;
   height?: number;
@@ -92,6 +101,10 @@ export interface ElectronAPI {
   // Project scaffolding
   scaffoldProject: (options: ScaffoldOptions) => Promise<ScaffoldResult>;
   onScaffoldProgress: (callback: (data: ScaffoldProgress & { projectName: string }) => void) => void;
+
+  // Project rename
+  renameProject: (projectId: string, newName: string) => Promise<RenameResult>;
+  onProjectRenamed: (callback: (data: { projectId: string; oldName: string; newName: string; oldPath: string; newPath: string }) => void) => () => void;
 
   // Project duplication
   duplicateProject: (projectId: string, customName?: string) => Promise<DuplicateResult>;

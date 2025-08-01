@@ -71,6 +71,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('project:scaffold-progress');
   },
 
+  // Project rename API
+  renameProject: (projectId, newName) => ipcRenderer.invoke('project:rename', { projectId, newName }),
+  onProjectRenamed: (callback) => {
+    ipcRenderer.on('project:renamed', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:renamed');
+  },
+
   // Project duplication API
   duplicateProject: (projectId, customName) => ipcRenderer.invoke('project:duplicate', { projectId, customName }),
   onDuplicateProgress: (callback) => {

@@ -143,6 +143,87 @@ export class DatabaseService {
     return result.changes > 0;
   }
 
+  // Rename project with filesystem folder rename
+  async renameProject(id, newName) {
+    const project = this.getProject(id);
+    if (!project) {
+      throw new Error(`Project not found: ${id}`);
+    }
+
+    console.log('Renaming project:', project.name, '→', newName);
+
+    // Generate new filesystem-safe folder name
+    const safeName = newName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Collapse multiple hyphens
+      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+
+    const baseDir = path.join(os.homedir(), 'faux-projects');
+    const newPath = path.join(baseDir, safeName);
+    const oldPath = project.path;
+
+    try {
+      // Check if new path already exists (filesystem conflict)
+      if (oldPath !== newPath) {
+        const pathExists = await fs.access(newPath).then(() => true).catch(() => false);
+        if (pathExists) {
+          throw new Error(`Folder "${safeName}" already exists. Please choose a different name.`);
+        }
+
+        // Rename the actual folder on filesystem
+        if (oldPath && await fs.access(oldPath).then(() => true).catch(() => false)) {
+          console.log('Renaming folder:', oldPath, '→', newPath);
+          await fs.rename(oldPath, newPath);
+          console.log('Folder renamed successfully');
+        } else {
+          console.warn('Original folder not found, skipping filesystem rename');
+        }
+      }
+
+      // Update database with new name and path
+      const updateData = { name: newName };
+      if (oldPath !== newPath) {
+        updateData.path = newPath;
+      }
+
+      const result = this.updateProject(id, updateData);
+      
+      if (result) {
+        console.log('Project renamed successfully in database');
+        return {
+          success: true,
+          oldName: project.name,
+          newName,
+          oldPath,
+          newPath: oldPath !== newPath ? newPath : oldPath
+        };
+      } else {
+        throw new Error('Failed to update project in database');
+      }
+
+    } catch (error) {
+      console.error('Failed to rename project:', error);
+      
+      // Rollback filesystem changes if database update failed
+      if (oldPath && newPath && oldPath !== newPath) {
+        try {
+          const newPathExists = await fs.access(newPath).then(() => true).catch(() => false);
+          if (newPathExists) {
+            console.log('Rolling back filesystem rename...');
+            await fs.rename(newPath, oldPath);
+            console.log('Filesystem rollback completed');
+          }
+        } catch (rollbackError) {
+          console.error('Failed to rollback filesystem changes:', rollbackError);
+        }
+      }
+      
+      throw error;
+    }
+  }
+
   // Update project thumbnail only
   updateProjectThumbnail(id, thumbnailData) {
     const now = Date.now();
