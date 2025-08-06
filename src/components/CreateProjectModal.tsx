@@ -41,7 +41,7 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
       projectName: formData.name.trim(),
       steps: [],
       progress: 0,
-      currentStep: 0
+      currentStep: 0 // This should match the ScaffoldProgress interface (number is correct)
     });
 
     try {

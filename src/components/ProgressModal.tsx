@@ -11,7 +11,9 @@ interface ProgressModalProps {
   isOpen: boolean;
   title: string;
   steps: ProgressStep[];
+  progress?: number; // Add explicit progress prop
   currentMessage?: string;
+  error?: string; // Add error prop
   onClose?: () => void;
   closeable?: boolean;
   'data-component'?: string;
@@ -21,7 +23,9 @@ export const ProgressModal = ({
   isOpen,
   title,
   steps,
+  progress: providedProgress,
   currentMessage,
+  error,
   onClose,
   closeable = false,
   'data-component': dataComponent
@@ -29,7 +33,13 @@ export const ProgressModal = ({
   const currentStep = steps.find(step => step.status === 'active');
   const completedSteps = steps.filter(step => step.status === 'completed').length;
   const totalSteps = steps.length;
-  const progress = (completedSteps / totalSteps) * 100;
+  
+  // Use provided progress or calculate from steps, ensuring we don't get NaN
+  const progress = providedProgress !== undefined 
+    ? providedProgress 
+    : totalSteps > 0 
+      ? (completedSteps / totalSteps) * 100 
+      : 0;
 
   return (
     <AnimatePresence>
@@ -105,7 +115,7 @@ export const ProgressModal = ({
                     className="progress-fill h-full"
                     style={{ backgroundColor: 'var(--color-action-primary)' }}
                     initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
+                    animate={{ width: `${isNaN(progress) ? 0 : progress}%` }}
                     transition={{ duration: 0.5, ease: 'easeOut' }}
                   />
                 </div>
@@ -115,7 +125,7 @@ export const ProgressModal = ({
                     Step {Math.min(completedSteps + 1, totalSteps)} of {totalSteps}
                   </span>
                   <span style={{ color: 'var(--color-text-secondary)' }}>
-                    {Math.round(progress)}%
+                    {Math.round(isNaN(progress) ? 0 : progress)}%
                   </span>
                 </div>
               </div>
@@ -201,6 +211,33 @@ export const ProgressModal = ({
                   >
                     {currentMessage}
                   </p>
+                </motion.div>
+              )}
+
+              {/* Error Message */}
+              {error && (
+                <motion.div
+                  className="error-section p-3"
+                  style={{ 
+                    backgroundColor: 'var(--color-error-bg, #fef2f2)',
+                    borderColor: 'var(--color-error-border, #fecaca)',
+                    border: '1px solid'
+                  }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  data-section="error"
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="var(--color-error, #ef4444)" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <p 
+                      className="error-text text-sm"
+                      style={{ color: 'var(--color-error, #ef4444)' }}
+                    >
+                      {error}
+                    </p>
+                  </div>
                 </motion.div>
               )}
             </motion.div>
