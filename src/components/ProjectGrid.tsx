@@ -204,6 +204,12 @@ export const ProjectGrid = () => {
       <ProjectViewer
         project={currentProject}
         onBack={handleBackToGrid}
+        onProjectUpdate={(updatedProject) => {
+          console.log('📝 ProjectGrid: Updating project state with deployment URL');
+          setCurrentProject(updatedProject);
+          // Also refresh the projects list to reflect the change in the grid
+          refreshProjects();
+        }}
       />
     );
   }

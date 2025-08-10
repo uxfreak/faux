@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectHeader } from './ProjectHeader';
 import { MainContent } from './MainContent';
 import { TerminalPane } from './TerminalPane';
+import { ShareDialog } from './ShareDialog';
 import { Project } from '../types/Project';
 import { useProjectServers } from '../hooks/useProjectServers';
 import { useThumbnails } from '../hooks/useThumbnails';
@@ -12,9 +13,10 @@ export type ViewMode = 'preview' | 'components';
 interface ProjectViewerProps {
   project: Project;
   onBack: () => void;
+  onProjectUpdate?: (updatedProject: Project) => void;
 }
 
-export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
+export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewerProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [terminalWidth, setTerminalWidth] = useState(400); // Default 400px
@@ -23,6 +25,12 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
   const [isDraggingCloseButton, setIsDraggingCloseButton] = useState(false);
   const [hasBeenDragged, setHasBeenDragged] = useState(false);
   const [isTerminalResizing, setIsTerminalResizing] = useState(false);
+  const [isDeploymentOpen, setIsDeploymentOpen] = useState(false);
+  const [deploymentState, setDeploymentState] = useState({
+    isDeploying: false,
+    progress: null,
+    sessionId: null
+  });
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const terminalWrapperRef = useRef<HTMLDivElement>(null);
 
@@ -81,6 +89,95 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
     };
   }, [project.id, cleanupThumbnails]);
 
+  // Listen for deployment events to maintain state
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const cleanupProgress = window.electronAPI.onDeployProgress?.((progress: any) => {
+      if (progress.projectId === project.id) {
+        setDeploymentState(prev => ({
+          ...prev,
+          isDeploying: true,
+          progress,
+          sessionId: progress.sessionId || prev.sessionId
+        }));
+      }
+    });
+
+    const cleanupStarted = window.electronAPI.onDeploymentStarted?.((data: any) => {
+      if (data.projectId === project.id) {
+        console.log('🚀 Deployment session started:', data);
+        setDeploymentState({
+          isDeploying: true,
+          progress: null,
+          sessionId: data.session?.id
+        });
+      }
+    });
+
+    const cleanupComplete = window.electronAPI.onDeployComplete?.((result: any) => {
+      console.log('🚀 Deployment completed:', result);
+      
+      // Only update if this deployment was for the current project
+      if (result.projectId === project.id) {
+        // Update project state if deployment was successful
+        if (result.success) {
+          const updatedProject = {
+            ...project,
+            deploymentUrl: result.siteUrl || result.deployUrl
+          };
+          
+          console.log('📝 Updating project with deployment URL:', updatedProject.deploymentUrl);
+          
+          // Update parent component's project state
+          onProjectUpdate?.(updatedProject);
+          
+          // Update deployment state to show completion
+          setDeploymentState(prev => ({
+            ...prev,
+            progress: prev.progress ? {
+              ...prev.progress,
+              progress: 100,
+              message: 'Deployment successful!',
+              siteUrl: result.siteUrl || result.deployUrl
+            } : null
+          }));
+          
+          // Auto-clear deployment state after 30 seconds
+          setTimeout(() => {
+            setDeploymentState(prev => {
+              // Only clear if still showing success (no new deployment started)
+              if (prev.progress?.progress === 100 && !prev.isDeploying) {
+                return {
+                  isDeploying: false,
+                  progress: null,
+                  sessionId: null
+                };
+              }
+              return prev;
+            });
+          }, 30000);
+        } else {
+          // Update deployment state to show error
+          setDeploymentState(prev => ({
+            ...prev,
+            isDeploying: false,
+            progress: prev.progress ? {
+              ...prev.progress,
+              error: result.error || 'Deployment failed'
+            } : null
+          }));
+        }
+      }
+    });
+
+    return () => {
+      cleanupProgress?.();
+      cleanupStarted?.();
+      cleanupComplete?.();
+    };
+  }, [project.id, project, onProjectUpdate]);
+
   // Manual thumbnail refresh
   const handleThumbnailRefresh = async () => {
     try {
@@ -125,6 +222,34 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
 
   const handleTerminalToggle = () => {
     setIsTerminalOpen(!isTerminalOpen);
+  };
+
+  const handleDeployToggle = () => {
+    setIsDeploymentOpen(!isDeploymentOpen);
+  };
+
+  const handleDeploy = async (createNew: boolean) => {
+    if (!window.electronAPI?.deployProject) {
+      console.error('Deployment API not available');
+      return;
+    }
+
+    try {
+      await window.electronAPI.deployProject(project.id, {
+        createNew,
+        siteName: createNew ? undefined : project.name
+      });
+    } catch (error) {
+      console.error('Failed to start deployment:', error);
+    }
+  };
+
+  const handleClearDeployment = () => {
+    setDeploymentState({
+      isDeploying: false,
+      progress: null,
+      sessionId: null
+    });
   };
 
   const handleTerminalClose = () => {
@@ -311,6 +436,7 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           onTerminalToggle={handleTerminalToggle}
           onFullscreenToggle={handleFullscreenToggle}
           onThumbnailRefresh={handleThumbnailRefresh}
+          onDeploy={handleDeployToggle}
           data-section="header"
         />
       )}
@@ -426,6 +552,18 @@ export const ProjectViewer = ({ project, onBack }: ProjectViewerProps) => {
           </AnimatePresence>
         )}
       </div>
+
+      {/* Share Dialog */}
+      <ShareDialog
+        isOpen={isDeploymentOpen}
+        projectId={project.id}
+        projectName={project.name}
+        existingSiteUrl={project.deploymentUrl}
+        deploymentState={deploymentState}
+        onClose={() => setIsDeploymentOpen(false)}
+        onDeploy={handleDeploy}
+        onClearDeployment={handleClearDeployment}
+      />
     </motion.div>
   );
 };
