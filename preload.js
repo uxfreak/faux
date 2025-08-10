@@ -106,6 +106,49 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onThumbnailsCleared: (callback) => {
     ipcRenderer.on('project:thumbnails-cleared', (event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('project:thumbnails-cleared');
+  },
+
+  // Deployment API
+  deployProject: (projectId, options) => ipcRenderer.invoke('project:deploy', projectId, options),
+  getProjectDeploymentState: (projectId) => ipcRenderer.invoke('project:getDeploymentState', projectId),
+  onDeployProgress: (callback) => {
+    ipcRenderer.on('project:deploy-progress', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:deploy-progress');
+  },
+  onDeployComplete: (callback) => {
+    ipcRenderer.on('project:deploy-complete', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:deploy-complete');
+  },
+
+  // Deployment Session Management API
+  deployment: {
+    cancel: (projectId) => ipcRenderer.invoke('deployment:cancel', projectId),
+    getActiveSession: (projectId) => ipcRenderer.invoke('deployment:getActive', projectId),
+    getProjectHistory: (projectId) => ipcRenderer.invoke('deployment:getProjectHistory', projectId),
+    getAllActiveSessions: () => ipcRenderer.invoke('deployment:getAllActive')
+  },
+  
+  // Deployment Session Events
+  onDeploymentStarted: (callback) => {
+    ipcRenderer.on('deployment:started', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('deployment:started');
+  },
+  onDeploymentBlocked: (callback) => {
+    ipcRenderer.on('deployment:blocked', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('deployment:blocked');
+  },
+
+  // Settings API
+  settings: {
+    getNetlifyToken: () => ipcRenderer.invoke('settings:getNetlifyToken'),
+    setNetlifyToken: (token) => ipcRenderer.invoke('settings:setNetlifyToken', token),
+    getDeploymentRecommendations: () => ipcRenderer.invoke('settings:getDeploymentRecommendations')
+  },
+
+  // External link support
+  openExternal: (url) => {
+    // This would be implemented if needed
+    console.log('Would open external URL:', url);
   }
 
 });

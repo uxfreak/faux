@@ -33,6 +33,7 @@ export class DatabaseService {
         description TEXT,
         thumbnail TEXT,
         path TEXT NOT NULL,
+        deploymentUrl TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       )
@@ -44,6 +45,22 @@ export class DatabaseService {
     try {
       this.db.exec('ALTER TABLE projects ADD COLUMN path TEXT');
       console.log('Added path column to existing projects table');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+    
+    // Add deploymentUrl column to existing tables if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE projects ADD COLUMN deploymentUrl TEXT');
+      console.log('Added deploymentUrl column to existing projects table');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+    
+    // Add lastDeployedAt column to existing tables if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE projects ADD COLUMN lastDeployedAt INTEGER');
+      console.log('Added lastDeployedAt column to existing projects table');
     } catch (error) {
       // Column already exists, ignore error
     }
@@ -62,6 +79,8 @@ export class DatabaseService {
       description: row.description,
       thumbnail: row.thumbnail,
       path: row.path,
+      deploymentUrl: row.deploymentUrl,
+      lastDeployedAt: row.lastDeployedAt ? new Date(row.lastDeployedAt) : null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     }));
@@ -78,8 +97,8 @@ export class DatabaseService {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO projects (id, name, description, thumbnail, path, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, description, thumbnail, path, deploymentUrl, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -88,6 +107,7 @@ export class DatabaseService {
       newProject.description || null,
       newProject.thumbnail || null,
       newProject.path,
+      newProject.deploymentUrl || null,
       now,
       now
     );
@@ -122,6 +142,16 @@ export class DatabaseService {
     if (updates.path !== undefined) {
       fields.push('path = ?');
       values.push(updates.path);
+    }
+    
+    if (updates.deploymentUrl !== undefined) {
+      fields.push('deploymentUrl = ?');
+      values.push(updates.deploymentUrl);
+    }
+    
+    if (updates.lastDeployedAt !== undefined) {
+      fields.push('lastDeployedAt = ?');
+      values.push(updates.lastDeployedAt ? updates.lastDeployedAt.getTime() : null);
     }
     
     // Always update updatedAt
@@ -277,14 +307,15 @@ export class DatabaseService {
       description: sourceProject.description ? `Copy of ${sourceProject.description}` : '',
       thumbnail: null, // Will be regenerated later
       path: duplicatePath,
+      deploymentUrl: null, // New project has no deployment
       createdAt: now,
       updatedAt: now
     };
 
     // Insert into database
     const stmt = this.db.prepare(`
-      INSERT INTO projects (id, name, description, thumbnail, path, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, description, thumbnail, path, deploymentUrl, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     try {
@@ -294,6 +325,7 @@ export class DatabaseService {
         duplicateProject.description,
         duplicateProject.thumbnail,
         duplicateProject.path,
+        duplicateProject.deploymentUrl,
         duplicateProject.createdAt,
         duplicateProject.updatedAt
       );
@@ -421,6 +453,8 @@ export class DatabaseService {
       description: row.description,
       thumbnail: row.thumbnail,
       path: row.path,
+      deploymentUrl: row.deploymentUrl,
+      lastDeployedAt: row.lastDeployedAt ? new Date(row.lastDeployedAt) : null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
     };

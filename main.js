@@ -6,6 +6,9 @@ import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverMana
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
 import { getThumbnailService } from './src/main/thumbnailService.js';
 import { duplicateProjectFiles } from './src/main/projectScaffold.js';
+import { deployToNetlify, getDeploymentRecommendations } from './src/services/apiNetlifyDeployment.js';
+import { getDeploymentManager } from './src/services/deploymentSessionManager.js';
+import { getProjectDeploymentState } from './src/services/projectChangeDetection.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -512,6 +515,230 @@ function setupIPCHandlers() {
   terminalManager.on('terminal:destroyed', (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('terminal:destroyed', data);
+    }
+  });
+
+  // Settings management IPC handlers
+  ipcMain.handle('settings:getNetlifyToken', async () => {
+    // In a real app, this would be stored in secure settings
+    // For now, we'll use a simple approach
+    try {
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs').then(m => m.promises);
+      
+      const settingsPath = path.join(os.homedir(), '.faux', 'settings.json');
+      const settingsData = await fs.readFile(settingsPath, 'utf8');
+      const settings = JSON.parse(settingsData);
+      return settings.netlifyToken || null;
+    } catch {
+      return null;
+    }
+  });
+
+  ipcMain.handle('settings:setNetlifyToken', async (event, token) => {
+    try {
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs').then(m => m.promises);
+      
+      const settingsDir = path.join(os.homedir(), '.faux');
+      const settingsPath = path.join(settingsDir, 'settings.json');
+      
+      // Ensure settings directory exists
+      await fs.mkdir(settingsDir, { recursive: true });
+      
+      let settings = {};
+      try {
+        const settingsData = await fs.readFile(settingsPath, 'utf8');
+        settings = JSON.parse(settingsData);
+      } catch {
+        // Settings file doesn't exist or is invalid, start fresh
+      }
+      
+      settings.netlifyToken = token;
+      await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+      
+      console.log('Netlify token saved to settings');
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to save Netlify token:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('settings:getDeploymentRecommendations', async () => {
+    try {
+      // Get token directly instead of using IPC call
+      let token = null;
+      try {
+        const os = await import('os');
+        const path = await import('path');
+        const fs = await import('fs').then(m => m.promises);
+        
+        const settingsPath = path.join(os.homedir(), '.faux', 'settings.json');
+        const settingsData = await fs.readFile(settingsPath, 'utf8');
+        const settings = JSON.parse(settingsData);
+        token = settings.netlifyToken || null;
+      } catch {
+        // No token stored
+      }
+      
+      return await getDeploymentRecommendations(token);
+    } catch (error) {
+      return {
+        preferred: 'none',
+        fallback: 'none',
+        message: `Error checking deployment options: ${error.message}`
+      };
+    }
+  });
+
+  // Project deployment IPC handler with session management
+  const deploymentManager = getDeploymentManager();
+  
+  // Set up deployment manager event forwarding
+  deploymentManager.on('deploymentStarted', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('deployment:started', data);
+    }
+  });
+  
+  deploymentManager.on('deploymentProgress', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('project:deploy-progress', data);
+    }
+  });
+  
+  deploymentManager.on('deploymentComplete', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // Update project in database if deployment was successful
+      if (data.session.status === 'completed' && data.session.result?.success) {
+        const updateData = {
+          deploymentUrl: data.session.result.siteUrl || data.session.result.deployUrl,
+          lastDeployedAt: new Date()
+        };
+        db.updateProject(data.projectId, updateData);
+      }
+      
+      mainWindow.webContents.send('project:deploy-complete', {
+        projectId: data.projectId,
+        success: data.session.status === 'completed' && data.session.result?.success,
+        siteUrl: data.session.result?.siteUrl,
+        deployUrl: data.session.result?.deployUrl,
+        error: data.session.error || data.session.result?.error,
+        sessionId: data.sessionId
+      });
+    }
+  });
+  
+  deploymentManager.on('deploymentBlocked', (data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('deployment:blocked', data);
+    }
+  });
+
+  ipcMain.handle('project:deploy', async (event, projectId, options = {}) => {
+    try {
+      console.log('[IPC] Starting managed deployment for project:', projectId);
+      
+      const project = db.getProject(projectId);
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      // Create deployment function that will be executed by the session
+      const deploymentFunction = async (deployOptions) => {
+        // Get stored API token
+        let token = null;
+        try {
+          const os = await import('os');
+          const path = await import('path');
+          const fs = await import('fs').then(m => m.promises);
+          
+          const settingsPath = path.join(os.homedir(), '.faux', 'settings.json');
+          const settingsData = await fs.readFile(settingsPath, 'utf8');
+          const settings = JSON.parse(settingsData);
+          token = settings.netlifyToken || null;
+        } catch {
+          // No token stored, will use CLI fallback
+        }
+
+        const finalDeployOptions = {
+          projectPath: project.path,
+          projectName: project.name,
+          createNew: deployOptions.createNew !== false,
+          existingUrl: deployOptions.createNew ? undefined : project.deploymentUrl,
+          siteName: deployOptions.siteName,
+          message: deployOptions.message || `Deploy ${project.name} from Faux`,
+          token,
+          onProgress: deployOptions.onProgress
+        };
+
+        return await deployToNetlify(finalDeployOptions);
+      };
+
+      // Start managed deployment
+      const result = deploymentManager.startDeployment(projectId, deploymentFunction, options);
+      
+      return result;
+
+    } catch (error) {
+      console.error('[IPC] Project deployment failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  });
+
+  // Additional IPC handlers for session management
+  ipcMain.handle('deployment:cancel', async (event, projectId) => {
+    try {
+      const result = deploymentManager.cancelDeployment(projectId);
+      return result;
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('deployment:getActive', async (event, projectId) => {
+    try {
+      const session = deploymentManager.getActiveSession(projectId);
+      return session ? session.toJSON() : null;
+    } catch (error) {
+      return null;
+    }
+  });
+
+  ipcMain.handle('deployment:getProjectHistory', async (event, projectId) => {
+    try {
+      return deploymentManager.getProjectSessions(projectId);
+    } catch (error) {
+      return [];
+    }
+  });
+
+  ipcMain.handle('deployment:getAllActive', async (event) => {
+    try {
+      return deploymentManager.getAllActiveSessions();
+    } catch (error) {
+      return {};
+    }
+  });
+
+  // Project deployment state IPC handler
+  ipcMain.handle('project:getDeploymentState', async (event, projectId) => {
+    try {
+      const project = db.getProject(projectId);
+      if (!project) {
+        return { error: 'Project not found' };
+      }
+      
+      return await getProjectDeploymentState(project);
+    } catch (error) {
+      console.error('Error getting project deployment state:', error);
+      return { error: error.message };
     }
   });
 

@@ -4,6 +4,7 @@ export interface Project {
   description?: string;
   thumbnail?: string; // Base64 or file path
   path: string; // Full path to project directory
+  deploymentUrl?: string; // Netlify site URL if deployed
   createdAt: Date;
   updatedAt: Date;
 }
