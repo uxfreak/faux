@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getDatabase } from './src/main/database.js';
@@ -6,12 +6,18 @@ import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverMana
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
 import { getThumbnailService } from './src/main/thumbnailService.js';
 import { duplicateProjectFiles } from './src/main/projectScaffold.js';
-import { deployToNetlify, getDeploymentRecommendations } from './src/services/apiNetlifyDeployment.js';
-import { getDeploymentManager } from './src/services/deploymentSessionManager.js';
-import { getProjectDeploymentState } from './src/services/projectChangeDetection.js';
 
+// Set up paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Import services from the appropriate location based on environment
+const servicesPath = process.env.NODE_ENV === 'development' ? './src/services' : './dist/services';
+
+// Dynamically import services
+const { deployToNetlify, getDeploymentRecommendations } = await import(`${servicesPath}/apiNetlifyDeployment.js`);
+const { getDeploymentManager } = await import(`${servicesPath}/deploymentSessionManager.js`);
+const { getProjectDeploymentState } = await import(`${servicesPath}/projectChangeDetection.js`);
 
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
@@ -42,7 +48,16 @@ function createWindow() {
       }, 1000);
     });
   } else {
-    mainWindow.loadFile(join(__dirname, 'dist/index.html'));
+    // When in production, ensure we use the correct path to the index.html
+    // This ensures proper loading of assets relative to the app.asar file
+    const indexPath = join(__dirname, 'dist', 'index.html');
+    console.log('Loading production file from:', indexPath);
+    mainWindow.loadFile(indexPath);
+    
+    // Log any load errors
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+      console.error('Failed to load app:', errorCode, errorDescription);
+    });
   }
 }
 

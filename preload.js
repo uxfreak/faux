@@ -147,8 +147,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // External link support
   openExternal: (url) => {
-    // This would be implemented if needed
-    console.log('Would open external URL:', url);
+    return require('electron').shell.openExternal(url);
   }
 
 });
