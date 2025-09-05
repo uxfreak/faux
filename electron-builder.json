@@ -1,0 +1,24 @@
+{
+  "appId": "com.faux.app",
+  "productName": "Faux",
+  "directories": {
+    "output": "dist_electron"
+  },
+  "files": [
+    "dist/**/*",
+    "main.js",
+    "preload.js",
+    "src/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": ["nsis", "portable"]
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Development"
+  }
+}
