@@ -274,7 +274,7 @@ export class DatabaseService {
     `);
     
     const result = stmt.run(thumbnailData, now, id);
-    console.log('Project thumbnail updated:', id, result.changes > 0);
+    // console.log('Project thumbnail updated:', id, result.changes > 0);
     
     return result.changes > 0;
   }

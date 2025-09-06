@@ -27,7 +27,7 @@ export class ThumbnailService {
 
     // Prevent duplicate captures for the same project
     if (this.captureQueue.has(projectId)) {
-      console.log(`📸 Thumbnail capture already in progress for project ${projectId}`);
+      // console.log(`📸 Thumbnail capture already in progress for project ${projectId}`);
       return this.captureQueue.get(projectId);
     }
 
@@ -64,8 +64,8 @@ export class ThumbnailService {
     let captureWindow = null;
 
     try {
-      console.log(`📸 Starting thumbnail capture for project ${projectId} at ${serverUrl}`);
-      console.log(`📐 Using capture dimensions: ${options.width}x${options.height} → ${options.thumbnailWidth}x${options.thumbnailHeight}`);
+      // console.log(`📸 Starting thumbnail capture for project ${projectId} at ${serverUrl}`);
+      // console.log(`📐 Using capture dimensions: ${options.width}x${options.height} → ${options.thumbnailWidth}x${options.thumbnailHeight}`);
 
       // Create a hidden browser window for capturing
       captureWindow = new BrowserWindow({
@@ -122,7 +122,7 @@ export class ThumbnailService {
       const base64 = thumbnail.toPNG().toString('base64');
       const dataUrl = `data:image/png;base64,${base64}`;
 
-      console.log(`✅ Thumbnail captured successfully for project ${projectId}`);
+      // console.log(`✅ Thumbnail captured successfully for project ${projectId}`);
       return dataUrl;
 
     } catch (error) {

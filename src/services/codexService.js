@@ -84,6 +84,7 @@ class CodexService extends EventEmitter {
       this.isConnected = false;
       
       console.error('❌ Failed to connect to Codex MCP:', error.message);
+      console.error('❌ Full error details:', error);
       this.emit('connectionError', error);
       
       throw new Error(`Codex connection failed: ${error.message}`);
@@ -392,10 +393,8 @@ class CodexService extends EventEmitter {
         name: 'codex',
         arguments: {
           prompt,
-          model: session.configuration.model,
-          sandbox: session.configuration.sandbox,
-          approval_policy: session.configuration.approvalPolicy,
-          config: session.configuration.modelConfig || {}
+          model: session.configuration.model || 'gpt-5',
+          sandbox: 'workspace-write'  // Add back sandbox for file operations
         }
       });
 
@@ -438,6 +437,9 @@ class CodexService extends EventEmitter {
     } catch (error) {
       session.status = 'error';
       console.error('❌ Conversation start failed:', error.message);
+      console.error('❌ Full conversation error details:', error);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error data:', error.data);
       this.emit('error', { sessionId, error });
       throw error;
     }
@@ -457,15 +459,29 @@ class CodexService extends EventEmitter {
     }
 
     console.log(`➡️ Continuing Codex conversation: ${sessionId}`);
+    console.log(`📝 Using fresh conversation approach due to MCP session limitations`);
+    
+    // Build conversation context from session history
+    let contextPrompt = prompt;
+    if (session.messages.length > 0) {
+      const recentMessages = session.messages.slice(-4); // Last 4 messages for context
+      const conversationContext = recentMessages.map(msg => 
+        `${msg.role}: ${msg.content}`
+      ).join('\n\n');
+      
+      contextPrompt = `Previous conversation context:\n${conversationContext}\n\nCurrent request: ${prompt}`;
+    }
     
     const requestId = `request_${++this.requestCounter}`;
     
     try {
+      // Use regular codex tool instead of codex-reply due to session management issues
       const response = await this.client.callTool({
-        name: 'codex-reply',
+        name: 'codex',
         arguments: {
-          sessionId,
-          prompt
+          prompt: contextPrompt,
+          model: 'gpt-5',
+          sandbox: 'workspace-write'
         }
       });
 
@@ -476,11 +492,25 @@ class CodexService extends EventEmitter {
         timestamp: new Date()
       });
 
+      console.log(`📥 Continue response structure:`, response);
+
+      // Check if we got a direct response
       if (response.content?.[0]?.text) {
+        const responseText = response.content[0].text;
+        console.log(`📝 Continue direct response received: ${responseText.slice(0, 200)}...`);
+        
+        // Add assistant message to session
         session.messages.push({
           role: 'assistant',
-          content: response.content[0].text,
+          content: responseText,
           timestamp: new Date()
+        });
+
+        // Emit as completed message directly (same as start conversation)
+        this.emit('messageComplete', {
+          sessionId,
+          requestId,
+          content: responseText
         });
       }
 

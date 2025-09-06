@@ -174,7 +174,7 @@ function setupIPCHandlers() {
       
       // Notify renderer that project data has changed
       if (mainWindow && !mainWindow.isDestroyed()) {
-        console.log('📤 Sending thumbnail update event for project:', projectId);
+        // console.log('📤 Sending thumbnail update event for project:', projectId);
         mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
       }
       
@@ -195,7 +195,7 @@ function setupIPCHandlers() {
       
       // Notify renderer that project data has changed
       if (mainWindow && !mainWindow.isDestroyed()) {
-        console.log('📤 Sending thumbnail update event for project:', projectId);
+        // console.log('📤 Sending thumbnail update event for project:', projectId);
         mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
       }
       
@@ -227,7 +227,7 @@ function setupIPCHandlers() {
       
       // Notify renderer that project data has changed
       if (mainWindow && !mainWindow.isDestroyed()) {
-        console.log('📤 Sending thumbnail update event for project:', projectId);
+        // console.log('📤 Sending thumbnail update event for project:', projectId);
         mainWindow.webContents.send('project:thumbnail-updated', { projectId, thumbnail });
       }
       
