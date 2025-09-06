@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Project } from '../types/Project';
-import { codexIPCService } from '../services/codexIPC';
+import { codexIPCService, CodexApprovalRequest } from '../services/codexIPC';
+import { CodexApprovalDialog } from './CodexApprovalDialog';
 
 interface Message {
   id: string;
@@ -30,6 +31,10 @@ export const CodexChat = ({
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [currentApproval, setCurrentApproval] = useState<CodexApprovalRequest | null>(null);
+  const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
+  const [isWorking, setIsWorking] = useState(false);
+  const [workingMessage, setWorkingMessage] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -117,8 +122,8 @@ export const CodexChat = ({
     });
 
     const unsubscribeComplete = codexIPCService.onMessageComplete((data) => {
-      if (isMounted) {
-        console.log('📡 Message complete:', data);
+      if (isMounted && data.isFinal) {
+        console.log('📡 Final message complete:', data);
         
         // Clear any pending timeout
         if (messageTimeoutRef.current) {
@@ -131,7 +136,10 @@ export const CodexChat = ({
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
           if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            lastMessage.content = data.content || 'No response received';
+            // If we have accumulated streaming content, use that
+            // Otherwise use the final message content (for cases where AI starts with tools)
+            // This handles both streaming and non-streaming scenarios
+            lastMessage.content = streamingContentRef.current || data.content || 'No response received';
             lastMessage.isStreaming = false;
           }
           return newMessages;
@@ -140,6 +148,7 @@ export const CodexChat = ({
         setStreamingContent(''); // Clear any streaming content
         streamingContentRef.current = '';
         setIsLoading(false);
+        setIsWorking(false);
       }
     });
 
@@ -148,6 +157,33 @@ export const CodexChat = ({
       if (isMounted) {
         setCurrentSessionId(data.sessionId);
         console.log('📡 Conversation started:', data.sessionId);
+      }
+    });
+
+    // Approval events
+    const unsubscribeApprovalRequest = codexIPCService.onApprovalRequest((approval) => {
+      if (isMounted) {
+        console.log('📡 Approval request received:', approval);
+        setCurrentApproval(approval);
+        setIsApprovalDialogOpen(true);
+      }
+    });
+
+    const unsubscribeApprovalResponse = codexIPCService.onApprovalResponse((data) => {
+      if (isMounted) {
+        console.log('📡 Approval response:', data);
+        // Close dialog after response
+        setIsApprovalDialogOpen(false);
+        setCurrentApproval(null);
+      }
+    });
+
+    // Working status listener
+    const unsubscribeWorkingStatus = codexIPCService.onWorkingStatus((data) => {
+      if (isMounted) {
+        console.log('📡 Working status received:', data);
+        setIsWorking(data.isWorking);
+        setWorkingMessage(data.message || '');
       }
     });
 
@@ -162,6 +198,9 @@ export const CodexChat = ({
       unsubscribeStream();
       unsubscribeComplete();
       unsubscribeStarted();
+      unsubscribeApprovalRequest();
+      unsubscribeApprovalResponse();
+      unsubscribeWorkingStatus();
     };
   }, []);
 
@@ -191,13 +230,14 @@ export const CodexChat = ({
     };
     setMessages(prev => [...prev, assistantMessage]);
 
-    // Set a fallback timeout in case messageComplete event doesn't arrive
+    // Set a very long fallback timeout (5 minutes) in case messageComplete event doesn't arrive
     messageTimeoutRef.current = setTimeout(() => {
       setMessages(prev => {
         const newMessages = [...prev];
         const lastMessage = newMessages[newMessages.length - 1];
         if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-          lastMessage.content = streamingContentRef.current || 'No response received - timeout';
+          // Just finalize whatever content we have
+          lastMessage.content = streamingContentRef.current || lastMessage.content || '';
           lastMessage.isStreaming = false;
         }
         return newMessages;
@@ -205,7 +245,8 @@ export const CodexChat = ({
       setStreamingContent('');
       streamingContentRef.current = '';
       setIsLoading(false);
-    }, 10000); // 10 second timeout
+      setIsWorking(false);
+    }, 300000); // 5 minute timeout - essentially never triggers for normal operations
 
     try {
       let response;
@@ -216,8 +257,8 @@ export const CodexChat = ({
         
         response = await codexIPCService.startConversation(projectPrompt, {
           model: 'gpt-5',
-          sandbox: 'read-only',
-          approvalPolicy: 'on-request',
+          sandbox: 'danger-full-access',
+          approvalPolicy: 'untrusted',
           projectContext: {
             name: project.name,
             path: project.path || '',
@@ -265,6 +306,36 @@ export const CodexChat = ({
     setIsConnecting(true);
     // Re-run the connection logic
     window.location.reload(); // Simple retry for now
+  };
+
+  // Approval handlers
+  const handleApprovalApprove = async (callId: string, feedback?: string) => {
+    console.log('Approving request:', callId, feedback);
+    const result = await codexIPCService.respondToApproval(callId, 'yes', feedback);
+    if (!result.success) {
+      console.error('Approval failed:', result.error);
+    }
+  };
+
+  const handleApprovalDeny = async (callId: string, feedback?: string) => {
+    console.log('Denying request:', callId, feedback);
+    const result = await codexIPCService.respondToApproval(callId, 'no', feedback);
+    if (!result.success) {
+      console.error('Denial failed:', result.error);
+    }
+  };
+
+  const handleApprovalAlways = async (callId: string, feedback?: string) => {
+    console.log('Always approving request:', callId, feedback);
+    const result = await codexIPCService.respondToApproval(callId, 'always', feedback);
+    if (!result.success) {
+      console.error('Always approval failed:', result.error);
+    }
+  };
+
+  const handleApprovalClose = () => {
+    setIsApprovalDialogOpen(false);
+    setCurrentApproval(null);
   };
 
   // Loading state
@@ -419,9 +490,18 @@ export const CodexChat = ({
                 <div className="whitespace-pre-wrap break-words">
                   {message.isStreaming ? (
                     <>
-                      {streamingContent || (
+                      <span>{streamingContent || (
                         <span className="animate-pulse" style={{ opacity: 0.6 }}>
                           Thinking...
+                        </span>
+                      )}</span>
+                      {isWorking && (
+                        <span className="animate-pulse" style={{ 
+                          opacity: 0.6,
+                          display: 'inline-block',
+                          marginLeft: '8px'
+                        }}>
+                          • Working on it...
                         </span>
                       )}
                     </>
@@ -512,6 +592,17 @@ export const CodexChat = ({
           Press Enter to send, Shift+Enter for new line
         </div>
       </div>
+
+      {/* Approval Dialog */}
+      <CodexApprovalDialog
+        approval={currentApproval}
+        isOpen={isApprovalDialogOpen}
+        onApprove={handleApprovalApprove}
+        onDeny={handleApprovalDeny}
+        onAlways={handleApprovalAlways}
+        onClose={handleApprovalClose}
+        data-component="codex-approval-dialog"
+      />
     </div>
   );
 };

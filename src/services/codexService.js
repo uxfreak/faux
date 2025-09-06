@@ -178,6 +178,27 @@ class CodexService extends EventEmitter {
         this.handleTaskComplete(event);
         break;
         
+      case 'exec_approval_request':
+        this.handleExecApprovalRequest(event);
+        break;
+        
+      case 'apply_patch_approval_request':
+        this.handleApplyPatchApprovalRequest(event);
+        break;
+        
+      case 'exec_command_begin':
+        this.handleCommandBegin(event);
+        break;
+        
+      case 'exec_command_output_delta':
+        this.handleCommandOutputDelta(event);
+        break;
+        
+      case 'exec_command_complete':
+      case 'exec_command_end':
+        this.handleCommandComplete(event);
+        break;
+        
       default:
         console.log(`🔍 Unhandled event type: ${event.msg.type}`);
         this.emit('unknownEvent', event);
@@ -225,6 +246,14 @@ class CodexService extends EventEmitter {
    */
   handleTaskStarted(event) {
     console.log(`🚀 Task started: ${event.id}`);
+    
+    // Emit working indicator when task starts
+    this.emit('workingStatus', {
+      sessionId: this.currentSessionId,
+      isWorking: true,
+      message: 'Working on it...'
+    });
+    
     this.emit('taskStarted', { taskId: event.id });
   }
 
@@ -291,28 +320,16 @@ class CodexService extends EventEmitter {
   handleMessageComplete(event) {
     const finalMessage = event.msg.message;
     
-    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
-      const session = this.sessions.get(this.currentSessionId);
-      
-      // Store the completed message
-      session.messages.push({
-        role: 'assistant',
-        content: finalMessage,
-        timestamp: new Date()
-      });
-      
-      // Clear streaming state
-      session.streamingContent = '';
-      session.lastUsed = new Date();
-    }
-    
     console.log(`📤 Message complete: ${finalMessage?.substring(0, 100)}...`);
     
-    // Emit completion for UI
-    this.emit('messageComplete', {
-      sessionId: this.currentSessionId,
-      content: finalMessage
-    });
+    // Don't emit anything for intermediate message completions
+    // They're redundant with the delta events
+    // We'll only use the final one from task_complete
+    
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.lastUsed = new Date();
+    }
   }
 
   /**
@@ -336,23 +353,103 @@ class CodexService extends EventEmitter {
    */
   handleTaskComplete(event) {
     console.log(`✅ Task completed!`);
+    console.log(`📝 Last message: ${event.msg.last_agent_message?.substring(0, 100)}...`);
     
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const session = this.sessions.get(this.currentSessionId);
-      if (event.msg.last_agent_message) {
-        session.messages.push({
-          role: 'assistant',
-          content: event.msg.last_agent_message,
-          timestamp: new Date()
-        });
-      }
+      
+      // Don't store the message here - it's already been accumulated via streaming
+      // Just clear the streaming state
+      session.streamingContent = '';
       session.lastUsed = new Date();
     }
+    
+    // Clear working status
+    this.emit('workingStatus', {
+      sessionId: this.currentSessionId,
+      isWorking: false,
+      message: ''
+    });
+    
+    // Emit final message complete with the full message
+    // The UI will use this to finalize the streaming message
+    this.emit('messageComplete', {
+      sessionId: this.currentSessionId,
+      content: event.msg.last_agent_message,
+      isFinal: true
+    });
     
     this.emit('taskComplete', {
       sessionId: this.currentSessionId,
       lastMessage: event.msg.last_agent_message
     });
+  }
+
+  /**
+   * Handle execution approval requests - CRITICAL for tool execution
+   */
+  handleExecApprovalRequest(event) {
+    console.log(`🤔 Execution approval request received: ${event.msg.type}`);
+    console.log(`📋 Command: ${event.msg.command?.join(' ') || 'unknown'}`);
+    console.log(`📁 Working directory: ${event.msg.cwd || 'unknown'}`);
+    console.log(`📄 Reason: ${event.msg.reason || 'No reason provided'}`);
+    
+    const approval = {
+      id: event.msg.call_id || event.id,  // Use call_id if available
+      sessionId: this.currentSessionId,
+      type: 'exec-approval',
+      timestamp: new Date(),
+      command: event.msg.command,
+      cwd: event.msg.cwd,
+      description: event.msg.reason || 'Command execution request',
+      metadata: event.msg
+    };
+    
+    // Store pending approval
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      if (!session.pendingApprovals) {
+        session.pendingApprovals = new Map();
+      }
+      session.pendingApprovals.set(approval.id, approval);
+    }
+    
+    this.emit('approvalRequest', approval);
+  }
+
+  /**
+   * Handle patch approval requests
+   */
+  handleApplyPatchApprovalRequest(event) {
+    console.log(`🤔 Patch approval request received: ${event.msg.type}`);
+    console.log(`📄 Changes: ${JSON.stringify(event.msg.changes, null, 2)}`);
+    console.log(`📄 Reason: ${event.msg.reason || 'No reason provided'}`);
+    
+    const approval = {
+      id: event.msg.call_id || event.id,  // Use call_id if available
+      sessionId: this.currentSessionId,
+      type: 'patch-approval',
+      timestamp: new Date(),
+      command: ['patch', 'apply'],  // Represent as command array
+      cwd: event.msg.cwd,
+      description: event.msg.reason || 'File patch application request',
+      metadata: {
+        ...event.msg,
+        changes: event.msg.changes,
+        grantRoot: event.msg.grant_root
+      }
+    };
+    
+    // Store pending approval
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      if (!session.pendingApprovals) {
+        session.pendingApprovals = new Map();
+      }
+      session.pendingApprovals.set(approval.id, approval);
+    }
+    
+    this.emit('approvalRequest', approval);
   }
 
   /**
@@ -371,8 +468,13 @@ class CodexService extends EventEmitter {
         name: "codex",
         arguments: {
           prompt: prompt,
-          sandbox: "read-only"  // CORRECT: not "workspace-write"
+          model: "gpt-5",  // Using gpt-5 model
+          sandbox: "danger-full-access",  // Full access with approval for unsafe commands
+          approval_policy: "untrusted"  // Triggers approval for unsafe operations
         }
+      }, undefined, {
+        timeout: 300000,              // 5 minutes instead of default 60 seconds
+        resetTimeoutOnProgress: true  // Reset timeout on progress events
       });
 
       // Wait for SessionConfigured event to be processed
@@ -410,6 +512,86 @@ class CodexService extends EventEmitter {
   }
 
   /**
+   * Handle command execution events
+   */
+  handleCommandBegin(event) {
+    console.log(`🚀 Command execution started: ${event.msg.command?.join(' ') || 'unknown command'}`);
+    console.log(`📁 Working directory: ${event.msg.cwd || 'unknown'}`);
+    
+    // Emit working indicator for tool execution
+    this.emit('workingStatus', {
+      sessionId: this.currentSessionId,
+      isWorking: true,
+      message: 'Working on it...'
+    });
+    
+    this.emit('commandBegin', {
+      sessionId: this.currentSessionId,
+      command: event.msg.command,
+      cwd: event.msg.cwd,
+      commandId: event.id
+    });
+  }
+
+  handleCommandOutputDelta(event) {
+    const output = event.msg.output || event.msg.delta || '';
+    
+    this.emit('commandOutput', {
+      sessionId: this.currentSessionId,
+      commandId: event.id,
+      output: output,
+      isError: event.msg.is_error || false
+    });
+  }
+
+  handleCommandComplete(event) {
+    console.log(`✅ Command execution completed with exit code: ${event.msg.exit_code || 'unknown'}`);
+    
+    this.emit('commandComplete', {
+      sessionId: this.currentSessionId,
+      commandId: event.id,
+      exitCode: event.msg.exit_code,
+      finalOutput: event.msg.final_output
+    });
+  }
+
+  /**
+   * Respond to approval request
+   */
+  async respondToApproval(callId, decision, feedback) {
+    if (!this.isConnected) {
+      throw new Error('Not connected to Codex MCP');
+    }
+
+    console.log(`📋 Responding to approval ${callId}: ${decision}`);
+    if (feedback) {
+      console.log(`💬 Feedback: ${feedback}`);
+    }
+
+    try {
+      // Try sending approval response as notification instead of tool call
+      await this.client.sendNotification({
+        method: 'approval/response',
+        params: {
+          call_id: callId,
+          decision: decision,
+          feedback: feedback || ''
+        }
+      });
+
+      console.log(`✅ Approval response sent as notification`);
+      return { success: true };
+      
+    } catch (error) {
+      console.error(`❌ Failed to send approval notification: ${error.message}`);
+      
+      // Fallback: just log the approval without sending
+      console.log(`📋 Approval decision recorded locally: ${decision} for ${callId}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Continue existing session with codex-reply
    */
   async continueSession(sessionId, prompt) {
@@ -425,6 +607,13 @@ class CodexService extends EventEmitter {
     console.log(`\n🔄 Continuing session ${sessionId}`);
     console.log(`📅 Last used: ${session.lastUsed.toISOString()}`);
     console.log(`💬 Message history: ${session.messages.length} messages`);
+    
+    // Set as current session
+    this.currentSessionId = sessionId;
+    
+    // Reset streaming content for new message
+    session.streamingContent = '';
+    session.reasoningContent = '';
 
     try {
       // Use codex-reply with session ID
@@ -434,6 +623,9 @@ class CodexService extends EventEmitter {
           sessionId: sessionId,
           prompt: prompt
         }
+      }, undefined, {
+        timeout: 300000,              // 5 minutes instead of default 60 seconds
+        resetTimeoutOnProgress: true  // Reset timeout on progress events
       });
 
       console.log(`📤 Continue response: ${response.content?.[0]?.text}`);

@@ -200,6 +200,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('codex:approvalResponse', (event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('codex:approvalResponse');
   },
+  onCodexWorkingStatus: (callback) => {
+    ipcRenderer.on('codex:workingStatus', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:workingStatus');
+  },
   onCodexTokenUpdate: (callback) => {
     ipcRenderer.on('codex:tokenUpdate', (event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('codex:tokenUpdate');

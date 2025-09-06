@@ -163,6 +163,11 @@ export class CodexManager {
       this.broadcastToRenderers('codex:approvalResponse', data);
     });
 
+    // Working status events
+    this.addServiceListener('workingStatus', (data) => {
+      this.broadcastToRenderers('codex:workingStatus', data);
+    });
+
     // Utility events
     this.addServiceListener('tokenUpdate', (data) => {
       this.broadcastToRenderers('codex:tokenUpdate', data);

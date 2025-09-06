@@ -114,6 +114,8 @@ function getIPCService() {
             return electronAPI.onCodexApprovalRequest(callback);
           case 'approvalResponse':
             return electronAPI.onCodexApprovalResponse(callback);
+          case 'workingStatus':
+            return electronAPI.onCodexWorkingStatus(callback);
           case 'tokenUpdate':
             return electronAPI.onCodexTokenUpdate(callback);
           case 'error':
@@ -356,6 +358,10 @@ export class CodexIPCService {
 
   onApprovalResponse(callback: (data: { approvalId: string; decision: string; feedback?: string }) => void): () => void {
     return this.on('approvalResponse', callback);
+  }
+
+  onWorkingStatus(callback: (data: { sessionId: string | null; isWorking: boolean; message: string }) => void): () => void {
+    return this.on('workingStatus', callback);
   }
 
   /**
