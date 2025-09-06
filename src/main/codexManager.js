@@ -155,6 +155,7 @@ export class CodexManager {
     });
 
     this.addServiceListener('messageComplete', (data) => {
+      console.log('📡 Forwarding messageComplete event:', data);
       this.broadcastToRenderers('codex:messageComplete', data);
     });
 

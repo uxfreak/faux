@@ -145,6 +145,79 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDeploymentRecommendations: () => ipcRenderer.invoke('settings:getDeploymentRecommendations')
   },
 
+  // Codex AI Assistant API
+  codex: {
+    // Connection management
+    connect: () => ipcRenderer.invoke('codex:connect'),
+    disconnect: () => ipcRenderer.invoke('codex:disconnect'),
+    getStatus: () => ipcRenderer.invoke('codex:getStatus'),
+    
+    // Session management
+    startConversation: (prompt, config) => ipcRenderer.invoke('codex:startConversation', prompt, config),
+    continueConversation: (sessionId, prompt) => ipcRenderer.invoke('codex:continueConversation', sessionId, prompt),
+    getSession: (sessionId) => ipcRenderer.invoke('codex:getSession', sessionId),
+    getAllSessions: () => ipcRenderer.invoke('codex:getAllSessions'),
+    closeSession: (sessionId) => ipcRenderer.invoke('codex:closeSession', sessionId),
+    
+    // Approval handling
+    respondToApproval: (callId, decision, feedback) => ipcRenderer.invoke('codex:respondToApproval', callId, decision, feedback)
+  },
+
+  // Codex event listeners
+  onCodexConnected: (callback) => {
+    ipcRenderer.on('codex:connected', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:connected');
+  },
+  onCodexDisconnected: (callback) => {
+    ipcRenderer.on('codex:disconnected', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:disconnected');
+  },
+  onCodexConnectionError: (callback) => {
+    ipcRenderer.on('codex:connectionError', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:connectionError');
+  },
+  onCodexMessageStream: (callback) => {
+    ipcRenderer.on('codex:messageStream', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:messageStream');
+  },
+  onCodexMessageComplete: (callback) => {
+    ipcRenderer.on('codex:messageComplete', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:messageComplete');
+  },
+  onCodexConversationStarted: (callback) => {
+    ipcRenderer.on('codex:conversationStarted', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:conversationStarted');
+  },
+  onCodexConversationContinued: (callback) => {
+    ipcRenderer.on('codex:conversationContinued', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:conversationContinued');
+  },
+  onCodexApprovalRequest: (callback) => {
+    ipcRenderer.on('codex:approvalRequest', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:approvalRequest');
+  },
+  onCodexApprovalResponse: (callback) => {
+    ipcRenderer.on('codex:approvalResponse', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:approvalResponse');
+  },
+  onCodexTokenUpdate: (callback) => {
+    ipcRenderer.on('codex:tokenUpdate', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:tokenUpdate');
+  },
+  onCodexError: (callback) => {
+    ipcRenderer.on('codex:error', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('codex:error');
+  },
+
+  // Generic IPC invoke for flexibility
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+
+  // Generic IPC event listeners
+  on: (channel, callback) => {
+    ipcRenderer.on(channel, callback);
+    return () => ipcRenderer.removeAllListeners(channel);
+  },
+
   // External link support
   openExternal: (url) => {
     return require('electron').shell.openExternal(url);

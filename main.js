@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import { getDatabase } from './src/main/database.js';
 import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
+import { getCodexManager } from './src/main/codexManager.js';
 import { getThumbnailService } from './src/main/thumbnailService.js';
 import { duplicateProjectFiles } from './src/main/projectScaffold.js';
 
@@ -21,6 +22,7 @@ const { getProjectDeploymentState } = await import(`${servicesPath}/projectChang
 
 const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
+let codexManager;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -72,6 +74,11 @@ app.on('window-all-closed', async () => {
   await cleanupAllServers();
   cleanupTerminalManager();
   
+  // Clean up codex manager
+  if (codexManager && codexManager.cleanup) {
+    await codexManager.cleanup();
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -90,6 +97,11 @@ app.on('before-quit', async (event) => {
   // Clean up all running servers and terminals
   await cleanupAllServers();
   cleanupTerminalManager();
+  
+  // Clean up codex manager
+  if (codexManager && codexManager.cleanup) {
+    await codexManager.cleanup();
+  }
   
   // Now actually quit
   app.exit(0);
@@ -395,6 +407,10 @@ function setupIPCHandlers() {
 
   // Terminal management IPC handlers
   const terminalManager = getTerminalManager();
+  
+  // Codex MCP management
+  codexManager = getCodexManager();
+  codexManager.initialize(mainWindow);
 
   // Create terminal session
   ipcMain.handle('terminal:create', async (event, options) => {

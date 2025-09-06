@@ -25,6 +25,7 @@ class CodexService extends EventEmitter {
     this.streamingMessages = new Map();
     this.pendingApprovals = [];
     this.requestCounter = 0;
+    this.requestToSessionMap = new Map(); // Map requestId to sessionId
     
     // Connection settings
     this.retryAttempts = 3;
@@ -193,12 +194,15 @@ class CodexService extends EventEmitter {
    * Handle streaming message deltas
    */
   handleMessageDelta(requestId, delta) {
+    const sessionId = this.requestToSessionMap.get(requestId);
+    
     if (!this.streamingMessages.has(requestId)) {
       this.streamingMessages.set(requestId, {
         content: '',
         buffer: '',
         isComplete: false,
-        startTime: Date.now()
+        startTime: Date.now(),
+        sessionId
       });
     }
     
@@ -212,8 +216,11 @@ class CodexService extends EventEmitter {
       message.content += completeLines.join('\n') + '\n';
       message.buffer = lines[lines.length - 1];
       
-      // Emit streaming update
+      console.log(`📝 Message delta for session ${sessionId}:`, completeLines.join('\n'));
+      
+      // Emit streaming update with sessionId
       this.emit('messageStream', {
+        sessionId,
         requestId,
         content: message.content,
         delta: completeLines.join('\n') + '\n'
@@ -225,21 +232,39 @@ class CodexService extends EventEmitter {
    * Finalize streaming message
    */
   finalizeMessage(requestId, finalContent) {
+    const sessionId = this.requestToSessionMap.get(requestId);
     const message = this.streamingMessages.get(requestId);
+    const content = finalContent || (message ? message.content + message.buffer : '');
+    
     if (message) {
-      message.content = finalContent || (message.content + message.buffer);
+      message.content = content;
       message.isComplete = true;
       message.buffer = '';
     }
     
+    console.log(`✅ Message complete for session ${sessionId}:`, content.slice(0, 200) + '...');
+    
+    // Add message to session history
+    if (sessionId && this.sessions.has(sessionId)) {
+      const session = this.sessions.get(sessionId);
+      session.messages.push({
+        role: 'assistant',
+        content,
+        timestamp: new Date()
+      });
+      session.lastActivity = new Date();
+    }
+    
     this.emit('messageComplete', {
+      sessionId,
       requestId,
-      content: message ? message.content : finalContent
+      content
     });
     
     // Clean up streaming state after delay
     setTimeout(() => {
       this.streamingMessages.delete(requestId);
+      this.requestToSessionMap.delete(requestId);
     }, 5000);
   }
 
@@ -349,8 +374,20 @@ class CodexService extends EventEmitter {
     this.sessions.set(sessionId, session);
     this.currentSessionId = sessionId;
     
+    // Store user message immediately
+    session.messages.push({
+      role: 'user',
+      content: prompt,
+      timestamp: new Date()
+    });
+
     try {
-      // Send tool call to Codex
+      // Map requestId to sessionId for routing responses
+      this.requestToSessionMap.set(requestId, sessionId);
+      
+      // Send tool call to Codex (async - response comes via notifications)
+      console.log(`📤 Sending prompt to Codex: "${prompt.slice(0, 100)}..."`);
+      
       const response = await this.client.callTool({
         name: 'codex',
         arguments: {
@@ -362,27 +399,35 @@ class CodexService extends EventEmitter {
         }
       });
 
-      // Store messages in session
-      session.messages.push({
-        role: 'user',
-        content: prompt,
-        timestamp: new Date()
-      });
+      console.log(`📥 Received response structure:`, response);
 
+      // Check if we got a direct response
       if (response.content?.[0]?.text) {
+        const responseText = response.content[0].text;
+        console.log(`📝 Direct response received: ${responseText.slice(0, 200)}...`);
+        
+        // Add assistant message to session
         session.messages.push({
           role: 'assistant',
-          content: response.content[0].text,
+          content: responseText,
           timestamp: new Date()
+        });
+
+        // Emit as completed message directly
+        this.emit('messageComplete', {
+          sessionId,
+          requestId,
+          content: responseText
         });
       }
 
       session.lastActivity = new Date();
       
+      // Emit conversation started 
       this.emit('conversationStarted', {
         sessionId,
         prompt,
-        response: response.content?.[0]?.text
+        response: response.content?.[0]?.text || null
       });
 
       return {

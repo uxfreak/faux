@@ -73,33 +73,60 @@ function getIPCService() {
     
     ipcService = {
       // Core connection methods
-      connect: () => electronAPI.invoke('codex:connect'),
-      disconnect: () => electronAPI.invoke('codex:disconnect'),
-      getStatus: () => electronAPI.invoke('codex:getStatus'),
+      connect: () => electronAPI.codex.connect(),
+      disconnect: () => electronAPI.codex.disconnect(),
+      getStatus: () => electronAPI.codex.getStatus(),
       
       // Session management
       startConversation: (prompt: string, config?: any) => 
-        electronAPI.invoke('codex:startConversation', prompt, config),
+        electronAPI.codex.startConversation(prompt, config),
       continueConversation: (sessionId: string, prompt: string) => 
-        electronAPI.invoke('codex:continueConversation', sessionId, prompt),
+        electronAPI.codex.continueConversation(sessionId, prompt),
       getSession: (sessionId: string) => 
-        electronAPI.invoke('codex:getSession', sessionId),
+        electronAPI.codex.getSession(sessionId),
       getAllSessions: () => 
-        electronAPI.invoke('codex:getAllSessions'),
+        electronAPI.codex.getAllSessions(),
       closeSession: (sessionId: string) => 
-        electronAPI.invoke('codex:closeSession', sessionId),
+        electronAPI.codex.closeSession(sessionId),
       
       // Approval handling
       respondToApproval: (callId: string, decision: string, feedback?: string) =>
-        electronAPI.invoke('codex:respondToApproval', callId, decision, feedback),
+        electronAPI.codex.respondToApproval(callId, decision, feedback),
       
-      // Event listeners
+      // Event listeners - use the specific codex event handlers
       on: (channel: string, callback: Function) => {
-        return electronAPI.on(`codex:${channel}`, callback);
+        switch (channel) {
+          case 'connected':
+            return electronAPI.onCodexConnected(callback);
+          case 'disconnected':
+            return electronAPI.onCodexDisconnected(callback);
+          case 'connectionError':
+            return electronAPI.onCodexConnectionError(callback);
+          case 'messageStream':
+            return electronAPI.onCodexMessageStream(callback);
+          case 'messageComplete':
+            return electronAPI.onCodexMessageComplete(callback);
+          case 'conversationStarted':
+            return electronAPI.onCodexConversationStarted(callback);
+          case 'conversationContinued':
+            return electronAPI.onCodexConversationContinued(callback);
+          case 'approvalRequest':
+            return electronAPI.onCodexApprovalRequest(callback);
+          case 'approvalResponse':
+            return electronAPI.onCodexApprovalResponse(callback);
+          case 'tokenUpdate':
+            return electronAPI.onCodexTokenUpdate(callback);
+          case 'error':
+            return electronAPI.onCodexError(callback);
+          default:
+            console.warn(`Unknown codex event channel: ${channel}`);
+            return () => {}; // Return empty cleanup function
+        }
       },
       
       off: (channel: string, callback: Function) => {
-        return electronAPI.off(`codex:${channel}`, callback);
+        // The event listeners return cleanup functions, so we don't need an off method
+        console.warn('codexIPC.off() is deprecated - use the cleanup function returned by on()');
       }
     };
   } else {

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ProjectHeader } from './ProjectHeader';
 import { MainContent } from './MainContent';
 import { TerminalPane } from './TerminalPane';
+import { CodexProtoPanel } from './CodexProtoPanel';
 import { ShareDialog } from './ShareDialog';
 import { Project } from '../types/Project';
 import { useProjectServers } from '../hooks/useProjectServers';
@@ -19,7 +20,9 @@ interface ProjectViewerProps {
 export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewerProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [isCodexOpen, setIsCodexOpen] = useState(false);
   const [terminalWidth, setTerminalWidth] = useState(400); // Default 400px
+  const [codexWidth, setCodexWidth] = useState(400); // Default 400px
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [closeButtonPosition, setCloseButtonPosition] = useState({ x: 0, y: 0 });
   const [isDraggingCloseButton, setIsDraggingCloseButton] = useState(false);
@@ -222,6 +225,10 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
 
   const handleTerminalToggle = () => {
     setIsTerminalOpen(!isTerminalOpen);
+  };
+
+  const handleCodexToggle = () => {
+    setIsCodexOpen(!isCodexOpen);
   };
 
   const handleDeployToggle = () => {
@@ -429,11 +436,13 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
           project={project}
           viewMode={viewMode}
           isTerminalOpen={isTerminalOpen}
+          isCodexOpen={isCodexOpen}
           isFullscreen={isFullscreen}
           serverState={serverState}
           onBack={handleBackWithCleanup}
           onModeChange={handleModeChange}
           onTerminalToggle={handleTerminalToggle}
+          onCodexToggle={handleCodexToggle}
           onFullscreenToggle={handleFullscreenToggle}
           onThumbnailRefresh={handleThumbnailRefresh}
           onDeploy={handleDeployToggle}
@@ -451,7 +460,10 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
         <div 
           className="main-content-wrapper flex flex-col relative"
           style={{
-            width: isFullscreen ? '100%' : (isTerminalOpen ? `calc(100% - ${terminalWidth}px)` : '100%')
+            width: isFullscreen ? '100%' : (() => {
+              const totalPanelWidth = (isTerminalOpen ? terminalWidth : 0) + (isCodexOpen ? codexWidth : 0);
+              return totalPanelWidth > 0 ? `calc(100% - ${totalPanelWidth}px)` : '100%';
+            })()
           }}
           data-section="main-content"
         >
@@ -546,6 +558,29 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
                   onClose={handleTerminalClose}
                   onResize={handleTerminalResize}
                   data-component="terminal-pane"
+                />
+              </div>
+            )}
+          </AnimatePresence>
+        )}
+
+        {/* Codex Panel - hidden in fullscreen */}
+        {!isFullscreen && (
+          <AnimatePresence>
+            {isCodexOpen && (
+              <div
+                className="codex-wrapper relative"
+                style={{ 
+                  width: `${codexWidth}px`,
+                  backgroundColor: 'var(--color-bg-primary)'
+                }}
+                data-section="codex"
+              >
+                <CodexProtoPanel
+                  project={project}
+                  onClose={() => setIsCodexOpen(false)}
+                  onResize={(width) => setCodexWidth(width)}
+                  data-component="codex-panel"
                 />
               </div>
             )}
