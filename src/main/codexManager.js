@@ -68,12 +68,7 @@ export class CodexManager {
     // Session management
     ipcMain.handle('codex:startConversation', async (event, prompt, config = {}) => {
       try {
-        const result = await codexService.startConversation(prompt, {
-          model: config.model || 'gpt-5',
-          sandbox: config.sandbox || 'workspace-write',
-          approvalPolicy: config.approvalPolicy || 'on-request',
-          ...config
-        });
+        const result = await codexService.startNewSession(prompt, config.label || 'New session');
         return result;
       } catch (error) {
         console.error('Start conversation error:', error);
@@ -83,7 +78,7 @@ export class CodexManager {
 
     ipcMain.handle('codex:continueConversation', async (event, sessionId, prompt) => {
       try {
-        const response = await codexService.continueConversation(sessionId, prompt);
+        const response = await codexService.continueSession(sessionId, prompt);
         return response;
       } catch (error) {
         console.error('Continue conversation error:', error);
@@ -96,7 +91,7 @@ export class CodexManager {
     });
 
     ipcMain.handle('codex:getAllSessions', () => {
-      return codexService.getAllSessions();
+      return codexService.listSessions();
     });
 
     ipcMain.handle('codex:closeSession', (event, sessionId) => {

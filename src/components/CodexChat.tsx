@@ -34,6 +34,7 @@ export const CodexChat = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef<string>('');
+  const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -119,21 +120,25 @@ export const CodexChat = ({
       if (isMounted) {
         console.log('📡 Message complete:', data);
         
-        // Add assistant message to messages array
-        if (data.content) {
-          const assistantMessage: Message = {
-            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date(),
-            isStreaming: false
-          };
-          
-          setMessages(prev => [...prev, assistantMessage]);
-          setStreamingContent(''); // Clear any streaming content
-          streamingContentRef.current = '';
+        // Clear any pending timeout
+        if (messageTimeoutRef.current) {
+          clearTimeout(messageTimeoutRef.current);
+          messageTimeoutRef.current = null;
         }
         
+        // Update the last assistant message with the completed content
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+            lastMessage.content = data.content || 'No response received';
+            lastMessage.isStreaming = false;
+          }
+          return newMessages;
+        });
+        
+        setStreamingContent(''); // Clear any streaming content
+        streamingContentRef.current = '';
         setIsLoading(false);
       }
     });
@@ -186,6 +191,22 @@ export const CodexChat = ({
     };
     setMessages(prev => [...prev, assistantMessage]);
 
+    // Set a fallback timeout in case messageComplete event doesn't arrive
+    messageTimeoutRef.current = setTimeout(() => {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+          lastMessage.content = streamingContentRef.current || 'No response received - timeout';
+          lastMessage.isStreaming = false;
+        }
+        return newMessages;
+      });
+      setStreamingContent('');
+      streamingContentRef.current = '';
+      setIsLoading(false);
+    }, 10000); // 10 second timeout
+
     try {
       let response;
       
@@ -195,7 +216,7 @@ export const CodexChat = ({
         
         response = await codexIPCService.startConversation(projectPrompt, {
           model: 'gpt-5',
-          sandbox: 'workspace-write',
+          sandbox: 'read-only',
           approvalPolicy: 'on-request',
           projectContext: {
             name: project.name,
@@ -229,22 +250,6 @@ export const CodexChat = ({
         }
         return newMessages;
       });
-    } finally {
-      // Finalize streaming after a delay to capture any remaining content
-      setTimeout(() => {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            lastMessage.content = streamingContentRef.current || lastMessage.content || 'No response received';
-            lastMessage.isStreaming = false;
-          }
-          return newMessages;
-        });
-        setStreamingContent('');
-        streamingContentRef.current = '';
-        setIsLoading(false);
-      }, 1000);
     }
   };
 

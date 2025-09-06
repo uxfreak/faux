@@ -291,7 +291,7 @@ function App() {
             Your Vite + React + TypeScript + Tailwind project is ready!
           </p>
           <div className="mt-4">
-            <button className="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">
+            <button className="bg-black hover:bg-black text-white font-bold py-2 px-4 rounded">
               Get Started
             </button>
           </div>

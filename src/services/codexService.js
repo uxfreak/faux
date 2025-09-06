@@ -1,18 +1,25 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { EventEmitter } from 'events';
-import { randomUUID } from 'crypto';
+import { z } from "zod";
 
 /**
- * Codex MCP Service - Handles all communication with Codex MCP
+ * Codex MCP Service - Fixed based on working codex-mcp-test patterns
  * 
- * Features:
- * - Session management with UUID tracking
- * - Real-time event streaming
- * - Approval workflow handling
- * - Auto-reconnection logic
- * - Error handling and recovery
+ * Key fixes:
+ * - Uses proper setNotificationHandler with Zod schema (CRITICAL)
+ * - Session IDs captured from session_configured notifications
+ * - Correct parameter names: sandbox "read-only", approval_policy "on-request"
+ * - Event-driven streaming with proper delta handling
+ * - Session continuity with codex-reply tool
  */
+
+// Zod schema for codex/event notifications (REQUIRED)
+const CodexEventNotificationSchema = z.object({
+  method: z.literal("codex/event"),
+  params: z.any()
+});
+
 class CodexService extends EventEmitter {
   constructor() {
     super();
@@ -20,22 +27,20 @@ class CodexService extends EventEmitter {
     this.transport = null;
     this.isConnected = false;
     this.isConnecting = false;
-    this.sessions = new Map();
+    
+    // Session management
+    this.sessions = new Map(); // sessionId -> session data
     this.currentSessionId = null;
-    this.streamingMessages = new Map();
-    this.pendingApprovals = [];
-    this.requestCounter = 0;
-    this.requestToSessionMap = new Map(); // Map requestId to sessionId
     
-    // Connection settings
-    this.retryAttempts = 3;
-    this.retryDelay = 1000;
+    // Real-time streaming state
+    this.eventQueue = [];
+    this.streamingState = new Map(); // requestId -> streaming state
     
-    console.log('🧠 CodexService initialized');
+    console.log('🧠 CodexService initialized (Fixed Version)');
   }
 
   /**
-   * Initialize and connect to Codex MCP
+   * Initialize and connect to Codex MCP with proper notification handler
    */
   async connect() {
     if (this.isConnected || this.isConnecting) {
@@ -53,20 +58,16 @@ class CodexService extends EventEmitter {
         version: "1.0.0"
       });
 
-      // Create stdio transport that spawns codex mcp
+      // Create stdio transport
       this.transport = new StdioClientTransport({
         command: "codex",
-        args: ["mcp"],
-        env: {
-          ...process.env,
-          // Ensure proper environment
-        }
+        args: ["mcp"]
       });
 
-      // Set up notification handler for real-time events
-      this.client.onNotification = (notification) => {
-        this.handleNotification(notification);
-      };
+      // CRITICAL: Use proper setNotificationHandler with Zod schema
+      this.client.setNotificationHandler(CodexEventNotificationSchema, (notification) => {
+        this.handleCodexEvent(notification);
+      });
 
       // Connect to the MCP server
       await this.client.connect(this.transport);
@@ -74,7 +75,7 @@ class CodexService extends EventEmitter {
       this.isConnected = true;
       this.isConnecting = false;
       
-      console.log('✅ Successfully connected to Codex MCP');
+      console.log('✅ Successfully connected to Codex MCP with proper notification handler');
       this.emit('connected');
       
       return true;
@@ -84,7 +85,6 @@ class CodexService extends EventEmitter {
       this.isConnected = false;
       
       console.error('❌ Failed to connect to Codex MCP:', error.message);
-      console.error('❌ Full error details:', error);
       this.emit('connectionError', error);
       
       throw new Error(`Codex connection failed: ${error.message}`);
@@ -112,8 +112,8 @@ class CodexService extends EventEmitter {
       
       // Clear state
       this.sessions.clear();
-      this.streamingMessages.clear();
-      this.pendingApprovals = [];
+      this.streamingState.clear();
+      this.eventQueue = [];
       this.currentSessionId = null;
       
       console.log('👋 Disconnected from Codex MCP');
@@ -125,482 +125,408 @@ class CodexService extends EventEmitter {
   }
 
   /**
-   * Handle incoming notifications (real-time events)
+   * Handle codex/event notifications - MAIN EVENT PROCESSOR
    */
-  handleNotification(notification) {
-    if (notification.method === 'codex/event') {
-      const { _meta, ...eventData } = notification.params;
-      const requestId = _meta?.requestId;
-      
-      console.log(`📡 Codex Event: ${eventData.msg ? Object.keys(eventData.msg)[0] : 'unknown'} (${requestId})`);
-      
-      // Process the event
-      this.processEvent(eventData, requestId);
-      
-      // Emit to listeners
-      this.emit('event', {
-        type: eventData.msg ? Object.keys(eventData.msg)[0] : 'unknown',
-        data: eventData,
-        requestId
-      });
-    }
-  }
+  handleCodexEvent(notification) {
+    const params = notification.params;
+    const event = {
+      id: params.id,
+      msg: params.msg,
+      meta: params._meta || {},
+      timestamp: new Date().toISOString()
+    };
 
-  /**
-   * Process specific event types
-   */
-  processEvent(eventData, requestId) {
-    const eventType = eventData.msg ? Object.keys(eventData.msg)[0] : null;
-    const eventContent = eventData.msg ? eventData.msg[eventType] : null;
+    this.eventQueue.push(event);
 
-    switch (eventType) {
-      case 'AgentMessageDelta':
-        this.handleMessageDelta(requestId, eventContent.delta);
+    console.log(`🎯 Received codex/event: ${event.msg.type}`);
+
+    // Process different event types based on test patterns
+    switch (event.msg.type) {
+      case 'session_configured':
+        this.handleSessionConfigured(event);
         break;
         
-      case 'AgentMessage':
-        this.finalizeMessage(requestId, eventContent.content);
+      case 'task_started':
+        this.handleTaskStarted(event);
         break;
         
-      case 'ExecApprovalRequest':
-        this.handleApprovalRequest('exec-approval', eventContent);
+      case 'agent_reasoning_section_break':
+        this.handleReasoningSectionBreak(event);
         break;
         
-      case 'ApplyPatchApprovalRequest':
-        this.handleApprovalRequest('patch-approval', eventContent);
+      case 'agent_reasoning_delta':
+        this.handleReasoningDelta(event);
         break;
         
-      case 'TokenCount':
-        this.updateTokenUsage(requestId, eventContent);
+      case 'agent_reasoning':
+        this.handleReasoningComplete(event);
         break;
         
-      case 'TaskStarted':
-        this.handleTaskStart(requestId, eventContent);
+      case 'agent_message_delta':
+        this.handleMessageDelta(event);
         break;
         
-      case 'TaskComplete':
-        this.handleTaskComplete(requestId, eventContent);
+      case 'agent_message':
+        this.handleMessageComplete(event);
         break;
         
-      case 'Error':
-        this.handleError(requestId, eventContent);
+      case 'token_count':
+        this.handleTokenCount(event);
+        break;
+        
+      case 'task_complete':
+        this.handleTaskComplete(event);
         break;
         
       default:
-        console.log(`🔔 Unhandled event type: ${eventType}`);
+        console.log(`🔍 Unhandled event type: ${event.msg.type}`);
+        this.emit('unknownEvent', event);
     }
   }
 
   /**
-   * Handle streaming message deltas
+   * Handle SessionConfigured event - CRITICAL for session tracking
    */
-  handleMessageDelta(requestId, delta) {
-    const sessionId = this.requestToSessionMap.get(requestId);
+  handleSessionConfigured(event) {
+    const sessionId = event.msg.session_id;
+    const requestId = event.meta.requestId;
     
-    if (!this.streamingMessages.has(requestId)) {
-      this.streamingMessages.set(requestId, {
-        content: '',
-        buffer: '',
-        isComplete: false,
-        startTime: Date.now(),
-        sessionId
-      });
-    }
+    console.log(`🆔 Session configured: ${sessionId}`);
+    console.log(`📊 Model: ${event.msg.model}`);
+    console.log(`🔗 Request ID: ${requestId}`);
     
-    const message = this.streamingMessages.get(requestId);
-    message.buffer += delta;
+    // Store session information
+    this.sessions.set(sessionId, {
+      sessionId: sessionId,
+      model: event.msg.model,
+      historyLogId: event.msg.history_log_id,
+      historyEntryCount: event.msg.history_entry_count,
+      initialMessages: event.msg.initial_messages,
+      requestId: requestId,
+      createdAt: new Date(),
+      lastUsed: new Date(),
+      messages: [],
+      streamingContent: '',
+      reasoningContent: ''
+    });
+
+    this.currentSessionId = sessionId;
+    console.log(`✅ Session ${sessionId} stored and set as current`);
     
-    // Commit complete lines (ending with newline)
-    const lines = message.buffer.split('\n');
-    if (lines.length > 1) {
-      const completeLines = lines.slice(0, -1);
-      message.content += completeLines.join('\n') + '\n';
-      message.buffer = lines[lines.length - 1];
-      
-      console.log(`📝 Message delta for session ${sessionId}:`, completeLines.join('\n'));
-      
-      // Emit streaming update with sessionId
-      this.emit('messageStream', {
-        sessionId,
-        requestId,
-        content: message.content,
-        delta: completeLines.join('\n') + '\n'
-      });
-    }
+    this.emit('sessionConfigured', {
+      sessionId,
+      model: event.msg.model,
+      requestId
+    });
   }
 
   /**
-   * Finalize streaming message
+   * Handle task lifecycle
    */
-  finalizeMessage(requestId, finalContent) {
-    const sessionId = this.requestToSessionMap.get(requestId);
-    const message = this.streamingMessages.get(requestId);
-    const content = finalContent || (message ? message.content + message.buffer : '');
+  handleTaskStarted(event) {
+    console.log(`🚀 Task started: ${event.id}`);
+    this.emit('taskStarted', { taskId: event.id });
+  }
+
+  /**
+   * Handle reasoning stream updates
+   */
+  handleReasoningSectionBreak(event) {
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.reasoningContent += '\n--- New Reasoning Section ---\n';
+    }
+    this.emit('reasoningSectionBreak', event);
+  }
+
+  handleReasoningDelta(event) {
+    const delta = event.msg.delta;
     
-    if (message) {
-      message.content = content;
-      message.isComplete = true;
-      message.buffer = '';
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.reasoningContent += delta;
     }
     
-    console.log(`✅ Message complete for session ${sessionId}:`, content.slice(0, 200) + '...');
+    this.emit('reasoningDelta', {
+      sessionId: this.currentSessionId,
+      delta: delta,
+      reasoning: this.sessions.get(this.currentSessionId)?.reasoningContent || ''
+    });
+  }
+
+  handleReasoningComplete(event) {
+    const fullReasoning = event.msg.text;
     
-    // Add message to session history
-    if (sessionId && this.sessions.has(sessionId)) {
-      const session = this.sessions.get(sessionId);
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.reasoningContent = fullReasoning;
+    }
+    
+    this.emit('reasoningComplete', {
+      sessionId: this.currentSessionId,
+      reasoning: fullReasoning
+    });
+  }
+
+  /**
+   * Handle message stream updates - CRITICAL for UI
+   */
+  handleMessageDelta(event) {
+    const delta = event.msg.delta;
+    
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.streamingContent += delta;
+      session.lastUsed = new Date();
+    }
+    
+    // Emit streaming update for UI
+    this.emit('messageStream', {
+      sessionId: this.currentSessionId,
+      delta: delta,
+      content: this.sessions.get(this.currentSessionId)?.streamingContent || ''
+    });
+  }
+
+  handleMessageComplete(event) {
+    const finalMessage = event.msg.message;
+    
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      
+      // Store the completed message
       session.messages.push({
         role: 'assistant',
-        content,
+        content: finalMessage,
         timestamp: new Date()
       });
-      session.lastActivity = new Date();
+      
+      // Clear streaming state
+      session.streamingContent = '';
+      session.lastUsed = new Date();
     }
     
+    console.log(`📤 Message complete: ${finalMessage?.substring(0, 100)}...`);
+    
+    // Emit completion for UI
     this.emit('messageComplete', {
-      sessionId,
-      requestId,
-      content
+      sessionId: this.currentSessionId,
+      content: finalMessage
     });
-    
-    // Clean up streaming state after delay
-    setTimeout(() => {
-      this.streamingMessages.delete(requestId);
-      this.requestToSessionMap.delete(requestId);
-    }, 5000);
   }
 
   /**
-   * Handle approval requests
+   * Handle token tracking
    */
-  handleApprovalRequest(type, eventContent) {
-    const approvalRequest = {
-      id: eventContent.call_id,
-      type,
-      timestamp: Date.now(),
-      ...eventContent
-    };
+  handleTokenCount(event) {
+    const tokens = event.msg;
     
-    this.pendingApprovals.push(approvalRequest);
+    console.log(`🪙 Token usage - Input: ${tokens.input_tokens}, Output: ${tokens.output_tokens}`);
     
-    // Emit to UI for modal display
-    this.emit('approvalRequest', approvalRequest);
-    
-    console.log(`🔐 Approval requested: ${type} - ${eventContent.call_id}`);
+    this.emit('tokenCount', {
+      sessionId: this.currentSessionId,
+      inputTokens: tokens.input_tokens,
+      outputTokens: tokens.output_tokens,
+      totalTokens: tokens.total_tokens
+    });
   }
 
   /**
-   * Respond to approval request
+   * Handle task completion
    */
-  async respondToApproval(callId, decision, feedback = null) {
-    const approvalIndex = this.pendingApprovals.findIndex(req => req.id === callId);
-    if (approvalIndex === -1) {
-      throw new Error(`Approval request ${callId} not found`);
+  handleTaskComplete(event) {
+    console.log(`✅ Task completed!`);
+    
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      if (event.msg.last_agent_message) {
+        session.messages.push({
+          role: 'assistant',
+          content: event.msg.last_agent_message,
+          timestamp: new Date()
+        });
+      }
+      session.lastUsed = new Date();
     }
     
-    const approval = this.pendingApprovals[approvalIndex];
-    this.pendingApprovals.splice(approvalIndex, 1);
-    
-    console.log(`📤 Approval response: ${decision} for ${callId}`);
-    
-    // Create elicitation response
-    const response = {
-      decision,
-      feedback
-    };
-    
-    // Emit response event
-    this.emit('approvalResponse', {
-      approvalId: callId,
-      decision,
-      feedback
-    });
-    
-    return response;
-  }
-
-  /**
-   * Update token usage
-   */
-  updateTokenUsage(requestId, tokenData) {
-    this.emit('tokenUpdate', {
-      requestId,
-      tokens: tokenData
+    this.emit('taskComplete', {
+      sessionId: this.currentSessionId,
+      lastMessage: event.msg.last_agent_message
     });
   }
 
   /**
-   * Handle task lifecycle events
+   * Start a new conversation - Fixed parameters
    */
-  handleTaskStart(requestId, taskData) {
-    this.emit('taskStart', { requestId, task: taskData });
-  }
-
-  handleTaskComplete(requestId, taskData) {
-    this.emit('taskComplete', { requestId, task: taskData });
-  }
-
-  handleError(requestId, errorData) {
-    this.emit('error', { requestId, error: errorData });
-  }
-
-  /**
-   * Start a new conversation
-   */
-  async startConversation(prompt, config = {}) {
+  async startNewSession(prompt, label = null) {
     if (!this.isConnected) {
       throw new Error('Not connected to Codex MCP');
     }
 
-    const requestId = `request_${++this.requestCounter}`;
-    const sessionId = randomUUID();
+    console.log(`\n📝 Starting new session: "${label || prompt.substring(0, 50)}..."`);
     
-    console.log(`🆕 Starting new Codex conversation: ${sessionId}`);
-    
-    // Create session state
-    const session = {
-      id: sessionId,
-      status: 'active',
-      messages: [],
-      tokenUsage: { input: 0, output: 0, total: 0 },
-      configuration: {
-        model: config.model || 'gpt-5',
-        sandbox: config.sandbox || 'workspace-write',
-        approvalPolicy: config.approvalPolicy || 'on-request',
-        ...config
-      },
-      createdAt: new Date(),
-      lastActivity: new Date()
-    };
-    
-    this.sessions.set(sessionId, session);
-    this.currentSessionId = sessionId;
-    
-    // Store user message immediately
-    session.messages.push({
-      role: 'user',
-      content: prompt,
-      timestamp: new Date()
-    });
-
     try {
-      // Map requestId to sessionId for routing responses
-      this.requestToSessionMap.set(requestId, sessionId);
-      
-      // Send tool call to Codex (async - response comes via notifications)
-      console.log(`📤 Sending prompt to Codex: "${prompt.slice(0, 100)}..."`);
-      
+      // Use CORRECT parameter names based on tests
       const response = await this.client.callTool({
-        name: 'codex',
+        name: "codex",
         arguments: {
-          prompt,
-          model: session.configuration.model || 'gpt-5',
-          sandbox: 'workspace-write'  // Add back sandbox for file operations
+          prompt: prompt,
+          sandbox: "read-only"  // CORRECT: not "workspace-write"
         }
       });
 
-      console.log(`📥 Received response structure:`, response);
+      // Wait for SessionConfigured event to be processed
+      await this.waitForSessionConfigured();
 
-      // Check if we got a direct response
-      if (response.content?.[0]?.text) {
-        const responseText = response.content[0].text;
-        console.log(`📝 Direct response received: ${responseText.slice(0, 200)}...`);
-        
-        // Add assistant message to session
-        session.messages.push({
-          role: 'assistant',
-          content: responseText,
+      console.log(`📤 Initial response: ${response.content?.[0]?.text}`);
+      
+      // Store user message in session
+      if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+        const session = this.sessions.get(this.currentSessionId);
+        session.messages.unshift({  // Add at beginning
+          role: 'user',
+          content: prompt,
           timestamp: new Date()
         });
-
-        // Emit as completed message directly
-        this.emit('messageComplete', {
-          sessionId,
-          requestId,
-          content: responseText
-        });
+        
+        if (response.content?.[0]?.text) {
+          session.messages.push({
+            role: 'assistant',
+            content: response.content[0].text,
+            timestamp: new Date()
+          });
+        }
       }
 
-      session.lastActivity = new Date();
-      
-      // Emit conversation started 
-      this.emit('conversationStarted', {
-        sessionId,
-        prompt,
-        response: response.content?.[0]?.text || null
-      });
-
       return {
-        sessionId,
+        sessionId: this.currentSessionId,
         response: response.content?.[0]?.text
       };
       
     } catch (error) {
-      session.status = 'error';
-      console.error('❌ Conversation start failed:', error.message);
-      console.error('❌ Full conversation error details:', error);
-      console.error('❌ Error code:', error.code);
-      console.error('❌ Error data:', error.data);
-      this.emit('error', { sessionId, error });
+      console.error(`❌ Failed to start session: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Continue existing conversation
+   * Continue existing session with codex-reply
    */
-  async continueConversation(sessionId, prompt) {
+  async continueSession(sessionId, prompt) {
     if (!this.isConnected) {
       throw new Error('Not connected to Codex MCP');
     }
 
-    const session = this.sessions.get(sessionId);
-    if (!session) {
+    if (!this.sessions.has(sessionId)) {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    console.log(`➡️ Continuing Codex conversation: ${sessionId}`);
-    console.log(`📝 Using fresh conversation approach due to MCP session limitations`);
-    
-    // Build conversation context from session history
-    let contextPrompt = prompt;
-    if (session.messages.length > 0) {
-      const recentMessages = session.messages.slice(-4); // Last 4 messages for context
-      const conversationContext = recentMessages.map(msg => 
-        `${msg.role}: ${msg.content}`
-      ).join('\n\n');
-      
-      contextPrompt = `Previous conversation context:\n${conversationContext}\n\nCurrent request: ${prompt}`;
-    }
-    
-    const requestId = `request_${++this.requestCounter}`;
-    
+    const session = this.sessions.get(sessionId);
+    console.log(`\n🔄 Continuing session ${sessionId}`);
+    console.log(`📅 Last used: ${session.lastUsed.toISOString()}`);
+    console.log(`💬 Message history: ${session.messages.length} messages`);
+
     try {
-      // Use regular codex tool instead of codex-reply due to session management issues
+      // Use codex-reply with session ID
       const response = await this.client.callTool({
-        name: 'codex',
+        name: "codex-reply",
         arguments: {
-          prompt: contextPrompt,
-          model: 'gpt-5',
-          sandbox: 'workspace-write'
+          sessionId: sessionId,
+          prompt: prompt
         }
       });
 
-      // Update session
+      console.log(`📤 Continue response: ${response.content?.[0]?.text}`);
+      
+      // Update session data
+      session.lastUsed = new Date();
       session.messages.push({
         role: 'user',
         content: prompt,
         timestamp: new Date()
       });
-
-      console.log(`📥 Continue response structure:`, response);
-
-      // Check if we got a direct response
+      
       if (response.content?.[0]?.text) {
-        const responseText = response.content[0].text;
-        console.log(`📝 Continue direct response received: ${responseText.slice(0, 200)}...`);
-        
-        // Add assistant message to session
         session.messages.push({
           role: 'assistant',
-          content: responseText,
+          content: response.content[0].text,
           timestamp: new Date()
         });
-
-        // Emit as completed message directly (same as start conversation)
-        this.emit('messageComplete', {
-          sessionId,
-          requestId,
-          content: responseText
-        });
       }
-
-      session.lastActivity = new Date();
-      
-      this.emit('conversationContinued', {
-        sessionId,
-        prompt,
-        response: response.content?.[0]?.text
-      });
 
       return response.content?.[0]?.text;
       
     } catch (error) {
-      console.error('❌ Conversation continuation failed:', error.message);
-      this.emit('error', { sessionId, error });
+      console.error(`❌ Failed to continue session: ${error.message}`);
       throw error;
     }
   }
 
   /**
-   * Get session information
+   * Wait for SessionConfigured event
    */
+  async waitForSessionConfigured(timeout = 5000) {
+    const startTime = Date.now();
+    const initialSessionId = this.currentSessionId;
+    
+    while (Date.now() - startTime < timeout) {
+      if (this.currentSessionId && this.currentSessionId !== initialSessionId) {
+        return this.currentSessionId;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    console.warn(`⚠️  Timeout waiting for SessionConfigured event`);
+    return this.currentSessionId;
+  }
+
+  /**
+   * Session management methods
+   */
+  listSessions() {
+    console.log(`\n📋 Active Sessions (${this.sessions.size}):`);
+    if (this.sessions.size === 0) {
+      console.log("   (no sessions)");
+      return [];
+    }
+
+    const sessions = [];
+    this.sessions.forEach((session, sessionId) => {
+      const isCurrent = sessionId === this.currentSessionId;
+      sessions.push({
+        sessionId,
+        model: session.model,
+        createdAt: session.createdAt,
+        lastUsed: session.lastUsed,
+        messageCount: session.messages.length,
+        isCurrent
+      });
+    });
+
+    return sessions;
+  }
+
   getSession(sessionId) {
     return this.sessions.get(sessionId);
   }
 
-  /**
-   * Get current session
-   */
   getCurrentSession() {
     return this.currentSessionId ? this.sessions.get(this.currentSessionId) : null;
   }
 
   /**
-   * List all sessions
-   */
-  getAllSessions() {
-    return Array.from(this.sessions.values());
-  }
-
-  /**
-   * Switch to different session
-   */
-  switchSession(sessionId) {
-    if (!this.sessions.has(sessionId)) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
-    
-    this.currentSessionId = sessionId;
-    this.emit('sessionChanged', { sessionId });
-    
-    console.log(`🔄 Switched to Codex session: ${sessionId}`);
-  }
-
-  /**
-   * Close session
-   */
-  closeSession(sessionId) {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.status = 'complete';
-      this.sessions.delete(sessionId);
-      
-      if (this.currentSessionId === sessionId) {
-        this.currentSessionId = null;
-      }
-      
-      this.emit('sessionClosed', { sessionId });
-      console.log(`🗑️ Closed Codex session: ${sessionId}`);
-    }
-  }
-
-  /**
-   * Check if service is ready
+   * Connection status
    */
   isReady() {
     return this.isConnected && !this.isConnecting;
   }
 
-  /**
-   * Get connection status
-   */
   getStatus() {
     return {
       connected: this.isConnected,
       connecting: this.isConnecting,
       sessionCount: this.sessions.size,
-      currentSessionId: this.currentSessionId,
-      pendingApprovals: this.pendingApprovals.length
+      currentSessionId: this.currentSessionId
     };
   }
 }
