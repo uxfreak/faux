@@ -399,82 +399,98 @@ export const CodexChat = ({
   // Main chat interface
   return (
     <div 
-      className="flex flex-col h-full"
+      className="flex flex-col h-full relative"
       style={{ backgroundColor: 'var(--color-bg-primary)' }}
       data-component={dataComponent}
       data-project-id={project.id}
     >
-      {/* Header */}
+
+
       <div 
-        className="px-4 py-3 border-b"
-        style={{
-          backgroundColor: 'var(--color-surface-primary)',
-          borderColor: 'var(--color-border-primary)'
+        className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
+        style={{ 
+          background: 'linear-gradient(to bottom, var(--color-bg-primary), var(--color-bg-secondary))'
         }}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--color-accent-primary)' }}>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
-              AI Assistant
-            </span>
-            <span className="ml-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              • {project.name}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-xs flex items-center" style={{ color: 'var(--color-success)' }}>
-              <span 
-                className="w-2 h-2 rounded-full mr-1"
-                style={{ backgroundColor: 'var(--color-success)' }}
-              ></span>
-              Connected
-            </span>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="p-1 text-gray-400 hover:text-white transition-colors"
-                title="Close AI assistant"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Messages area */}
-      <div 
-        className="flex-1 overflow-y-auto p-4 space-y-4"
-        style={{ backgroundColor: 'var(--color-bg-secondary)' }}
-      >
         {messages.length === 0 && (
-          <div className="text-center mt-8" style={{ color: 'var(--color-text-secondary)' }}>
-            <div className="mb-4">
-              <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ opacity: 0.3 }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-center mt-12"
+          >
+            <motion.div 
+              className="mb-6"
+              animate={{ 
+                rotate: [0, 5, -5, 0],
+                scale: [1, 1.05, 1]
+              }}
+              transition={{ duration: 4, repeat: Infinity, repeatDelay: 2 }}
+            >
+              <svg className="w-20 h-20 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ 
+                opacity: 0.2,
+                strokeWidth: 0.5,
+                color: 'var(--color-accent-primary)'
+              }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
+            </motion.div>
+            <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+              Start a conversation
+            </p>
+            
+            {/* Quick action suggestions */}
+            <div className="flex flex-wrap gap-2 justify-center max-w-md mx-auto">
+              {[
+                "Explain the project structure",
+                "Show recent changes",
+                "Help me debug an issue",
+                "Suggest improvements"
+              ].map((suggestion, idx) => (
+                <motion.button
+                  key={idx}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.3 + idx * 0.1 }}
+                  onClick={() => setInput(suggestion)}
+                  className="px-3 py-1.5 text-xs rounded-full transition-all"
+                  style={{
+                    backgroundColor: 'var(--color-surface-primary)',
+                    border: '1px solid var(--color-border-secondary)',
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--color-accent-primary)';
+                    e.currentTarget.style.color = 'var(--color-text-primary)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--color-border-secondary)';
+                    e.currentTarget.style.color = 'var(--color-text-secondary)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  {suggestion}
+                </motion.button>
+              ))}
             </div>
-            <p className="text-lg">AI Assistant Ready</p>
-            <p className="text-sm mt-2">Ask questions about your project or request code changes</p>
-          </div>
+          </motion.div>
         )}
 
         <AnimatePresence>
           {messages.map((message) => (
             <motion.div
               key={message.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div
-                className={`max-w-[70%] rounded-lg px-4 py-2`}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                className={`max-w-[75%] rounded-lg px-4 py-3 shadow-sm`}
                 style={{
                   backgroundColor: message.role === 'user' 
                     ? 'var(--color-accent-primary)'
@@ -484,25 +500,56 @@ export const CodexChat = ({
                     : 'var(--color-text-primary)',
                   border: message.role === 'assistant' 
                     ? '1px solid var(--color-border-primary)'
-                    : 'none'
+                    : 'none',
+                  boxShadow: 'var(--shadow-sm)'
                 }}
               >
                 <div className="whitespace-pre-wrap break-words">
                   {message.isStreaming ? (
                     <>
-                      <span>{streamingContent || (
-                        <span className="animate-pulse" style={{ opacity: 0.6 }}>
-                          Thinking...
-                        </span>
-                      )}</span>
-                      {isWorking && (
-                        <span className="animate-pulse" style={{ 
-                          opacity: 0.6,
-                          display: 'inline-block',
-                          marginLeft: '8px'
-                        }}>
-                          • Working on it...
-                        </span>
+                      {streamingContent ? (
+                        <span>{streamingContent}</span>
+                      ) : (
+                        <motion.div className="flex items-center gap-2">
+                          <motion.span
+                            animate={{ opacity: [0.4, 1, 0.4] }}
+                            transition={{ duration: 1.5, repeat: Infinity }}
+                            style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            Thinking
+                          </motion.span>
+                          <motion.div className="flex gap-1">
+                            {[0, 1, 2].map((i) => (
+                              <motion.span
+                                key={i}
+                                className="w-1 h-1 rounded-full"
+                                style={{ backgroundColor: 'var(--color-accent-primary)' }}
+                                animate={{ 
+                                  y: [0, -4, 0],
+                                  opacity: [0.3, 1, 0.3]
+                                }}
+                                transition={{ 
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  delay: i * 0.2
+                                }}
+                              />
+                            ))}
+                          </motion.div>
+                        </motion.div>
+                      )}
+                      {isWorking && workingMessage && (
+                        <motion.span
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="block mt-2 text-xs"
+                          style={{ 
+                            color: 'var(--color-text-tertiary)',
+                            fontStyle: 'italic'
+                          }}
+                        >
+                          {workingMessage}
+                        </motion.span>
                       )}
                     </>
                   ) : (
@@ -510,17 +557,29 @@ export const CodexChat = ({
                   )}
                 </div>
                 <div
-                  className="text-xs mt-1"
+                  className="text-xs mt-2 flex items-center gap-2"
                   style={{
                     color: message.role === 'user' 
                       ? 'rgba(255,255,255,0.7)'
-                      : 'var(--color-text-tertiary)',
-                    opacity: 0.7
+                      : 'var(--color-text-tertiary)'
                   }}
                 >
-                  {message.timestamp.toLocaleTimeString()}
+                  <span>{message.timestamp.toLocaleTimeString()}</span>
+                  {message.role === 'assistant' && !message.isStreaming && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.5 }}
+                      className="flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-xs">Complete</span>
+                    </motion.span>
+                  )}
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -528,69 +587,75 @@ export const CodexChat = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
       <div 
-        className="p-4 border-t"
+        className="border-t"
         style={{
-          backgroundColor: 'var(--color-surface-primary)',
-          borderColor: 'var(--color-border-primary)'
+          backgroundColor: 'var(--color-bg-primary)',
+          borderColor: 'var(--color-border-secondary)'
         }}
       >
-        <div className="flex items-end space-x-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask the AI assistant about your project..."
-            disabled={isLoading || !isConnected}
-            rows={1}
-            className="flex-1 resize-none px-3 py-2 rounded-lg focus:outline-none transition-colors"
-            style={{
-              backgroundColor: 'var(--color-bg-secondary)',
-              border: '1px solid var(--color-border-secondary)',
-              color: 'var(--color-text-primary)',
-              opacity: isLoading || !isConnected ? 0.5 : 1,
-              cursor: isLoading || !isConnected ? 'not-allowed' : 'text',
-              minHeight: '38px',
-              maxHeight: '120px'
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'var(--color-accent-primary)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'var(--color-border-secondary)';
-            }}
-          />
-          <button
-            onClick={handleSendMessage}
-            disabled={isLoading || !input.trim() || !isConnected}
-            className="px-4 py-2 rounded-lg transition-all duration-200"
-            style={{
-              backgroundColor: 'var(--color-accent-primary)',
-              color: 'var(--color-button-text)',
-              opacity: isLoading || !input.trim() || !isConnected ? 0.5 : 1,
-              cursor: isLoading || !input.trim() || !isConnected ? 'not-allowed' : 'pointer'
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading && input.trim() && isConnected) {
-                e.currentTarget.style.backgroundColor = 'var(--color-accent-hover)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--color-accent-primary)';
-            }}
-          >
-            {isLoading ? (
-              <span className="animate-pulse">...</span>
-            ) : (
-              'Send'
-            )}
-          </button>
+        <div className="p-3">
+          <div className="flex items-center gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about your project or request changes..."
+              disabled={isLoading || !isConnected}
+              rows={1}
+              className="flex-1 resize-none px-3 py-2 focus:outline-none transition-all text-sm"
+              style={{
+                backgroundColor: 'transparent',
+                border: 'none',
+                color: 'var(--color-text-primary)',
+                opacity: isLoading || !isConnected ? 0.5 : 1,
+                cursor: isLoading || !isConnected ? 'not-allowed' : 'text',
+                minHeight: '36px',
+                maxHeight: '100px'
+              }}
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={isLoading || !input.trim() || !isConnected}
+              className="p-2 transition-all"
+              style={{
+                backgroundColor: 'transparent',
+                color: isLoading || !input.trim() || !isConnected
+                  ? 'var(--color-text-tertiary)'
+                  : 'var(--color-text-secondary)',
+                cursor: isLoading || !input.trim() || !isConnected ? 'not-allowed' : 'pointer',
+                opacity: isLoading || !input.trim() || !isConnected ? 0.3 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && input.trim() && isConnected) {
+                  e.currentTarget.style.color = 'var(--color-accent-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading && input.trim() && isConnected) {
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }
+              }}
+              title="Send message"
+            >
+              {isLoading ? (
+                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-          Press Enter to send, Shift+Enter for new line
-        </div>
+        {input.length > 0 && (
+          <div className="px-3 pb-2 text-xs" style={{ color: 'var(--color-text-tertiary)', opacity: 0.4 }}>
+            <span>⏎ to send</span>
+          </div>
+        )}
       </div>
 
       {/* Approval Dialog */}
