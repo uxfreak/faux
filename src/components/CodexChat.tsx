@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Project } from '../types/Project';
 import { codexIPCService, CodexApprovalRequest } from '../services/codexIPC';
 import { CodexApprovalDialog } from './CodexApprovalDialog';
@@ -35,16 +37,81 @@ export const CodexChat = ({
   const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [workingMessage, setWorkingMessage] = useState('');
+  const [sessionRestored, setSessionRestored] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef<string>('');
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasLoadedSession = useRef(false);
+
+  // Save session data to localStorage
+  const saveSessionData = () => {
+    if (currentSessionId && project.id) {
+      const sessionData = {
+        sessionId: currentSessionId,
+        messages: messages,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem(`codex_session_${project.id}`, JSON.stringify(sessionData));
+    }
+  };
+
+  // Load session data from localStorage
+  const loadSessionData = async () => {
+    if (project.id && !hasLoadedSession.current) {
+      const savedData = localStorage.getItem(`codex_session_${project.id}`);
+      if (savedData) {
+        try {
+          const sessionData = JSON.parse(savedData);
+          // Check if session is less than 24 hours old
+          const sessionAge = Date.now() - new Date(sessionData.timestamp).getTime();
+          if (sessionAge < 24 * 60 * 60 * 1000) { // 24 hours in milliseconds
+            // First check if the session still exists on the backend
+            const session = await codexIPCService.getSession(sessionData.sessionId);
+            if (session) {
+              // Session still exists, restore it
+              setCurrentSessionId(sessionData.sessionId);
+              setMessages(sessionData.messages.map((msg: any) => ({
+                ...msg,
+                timestamp: new Date(msg.timestamp)
+              })));
+              hasLoadedSession.current = true;
+              setSessionRestored(true);
+              // Hide the restored notification after 3 seconds
+              setTimeout(() => setSessionRestored(false), 3000);
+              console.log(`🔄 Restored session ${sessionData.sessionId} for project ${project.name}`);
+              return true;
+            } else {
+              // Session no longer exists, clear the saved data
+              localStorage.removeItem(`codex_session_${project.id}`);
+              console.log('⚠️ Saved session no longer exists, starting fresh');
+            }
+          } else {
+            // Session is too old, clear it
+            localStorage.removeItem(`codex_session_${project.id}`);
+            console.log('⏰ Session expired, starting fresh');
+          }
+        } catch (error) {
+          console.error('Error loading session data:', error);
+          localStorage.removeItem(`codex_session_${project.id}`);
+        }
+      }
+    }
+    return false;
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
+
+  // Save session when messages change
+  useEffect(() => {
+    if (messages.length > 0 && currentSessionId) {
+      saveSessionData();
+    }
+  }, [messages, currentSessionId]);
 
   // Initialize connection and event listeners
   useEffect(() => {
@@ -54,6 +121,9 @@ export const CodexChat = ({
       try {
         setIsConnecting(true);
         setError(null);
+        
+        // Try to load existing session first
+        const sessionLoaded = await loadSessionData();
         
         // Check connection status first
         const status = await codexIPCService.getStatus();
@@ -71,6 +141,10 @@ export const CodexChat = ({
           setIsConnected(true);
           setIsConnecting(false);
           console.log('✅ Codex connected successfully');
+          
+          if (sessionLoaded) {
+            console.log('📚 Previous session restored');
+          }
         }
         
       } catch (error: any) {
@@ -192,6 +266,10 @@ export const CodexChat = ({
 
     return () => {
       isMounted = false;
+      
+      // Save session on unmount
+      saveSessionData();
+      
       unsubscribeConnected();
       unsubscribeDisconnected();
       unsubscribeError();
@@ -308,6 +386,22 @@ export const CodexChat = ({
     window.location.reload(); // Simple retry for now
   };
 
+  const handleClearSession = async () => {
+    if (project.id) {
+      localStorage.removeItem(`codex_session_${project.id}`);
+      setMessages([]);
+      
+      // Close the session on backend if it exists
+      if (currentSessionId) {
+        await codexIPCService.closeSession(currentSessionId);
+      }
+      
+      setCurrentSessionId(null);
+      hasLoadedSession.current = false;
+      console.log('🗑️ Session cleared for project', project.name);
+    }
+  };
+
   // Approval handlers
   const handleApprovalApprove = async (callId: string, feedback?: string) => {
     console.log('Approving request:', callId, feedback);
@@ -407,11 +501,31 @@ export const CodexChat = ({
 
 
       <div 
-        className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
+        className="flex-1 overflow-y-auto px-4 py-6 space-y-4 relative"
         style={{ 
           background: 'linear-gradient(to bottom, var(--color-bg-primary), var(--color-bg-secondary))'
         }}
       >
+        {/* Session restored notification */}
+        {sessionRestored && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-2 left-4 right-4 px-3 py-2 rounded-lg text-xs flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--color-success)',
+              color: 'white',
+              zIndex: 10,
+              boxShadow: 'var(--shadow-md)'
+            }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Previous conversation restored
+          </motion.div>
+        )}
         {messages.length === 0 && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -482,15 +596,14 @@ export const CodexChat = ({
           {messages.map((message) => (
             <motion.div
               key={message.id}
-              initial={{ opacity: 0, y: 10, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                className={`max-w-[75%] rounded-lg px-4 py-3 shadow-sm`}
+              <div
+                className={`max-w-[75%] rounded-lg px-3 py-2 text-sm`}
                 style={{
                   backgroundColor: message.role === 'user' 
                     ? 'var(--color-accent-primary)'
@@ -500,11 +613,10 @@ export const CodexChat = ({
                     : 'var(--color-text-primary)',
                   border: message.role === 'assistant' 
                     ? '1px solid var(--color-border-primary)'
-                    : 'none',
-                  boxShadow: 'var(--shadow-sm)'
+                    : 'none'
                 }}
               >
-                <div className="whitespace-pre-wrap break-words">
+                <div className="break-words">
                   {message.isStreaming ? (
                     <>
                       {streamingContent ? (
@@ -553,33 +665,62 @@ export const CodexChat = ({
                       )}
                     </>
                   ) : (
-                    message.content
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                        code: ({ inline, className, children, ...props }) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          return inline ? (
+                            <code 
+                              className="px-1 py-0.5 rounded text-xs" 
+                              style={{
+                                backgroundColor: 'var(--color-surface-secondary)',
+                                color: 'var(--color-text-primary)',
+                                display: 'inline'
+                              }}
+                              {...props}
+                            >
+                              {children}
+                            </code>
+                          ) : (
+                            <pre 
+                              className="p-2 rounded text-xs overflow-x-auto mb-2" 
+                              style={{
+                                backgroundColor: 'var(--color-surface-secondary)'
+                              }}
+                            >
+                              <code className={className} {...props}>{children}</code>
+                            </pre>
+                          );
+                        },
+                        blockquote: ({ children }) => (
+                          <blockquote className="pl-3 border-l-2 mb-2" style={{
+                            borderColor: 'var(--color-border-primary)',
+                            color: 'var(--color-text-secondary)'
+                          }}>{children}</blockquote>
+                        )
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   )}
                 </div>
                 <div
-                  className="text-xs mt-2 flex items-center gap-2"
+                  className="text-xs mt-1"
                   style={{
                     color: message.role === 'user' 
-                      ? 'rgba(255,255,255,0.7)'
-                      : 'var(--color-text-tertiary)'
+                      ? 'rgba(255,255,255,0.6)'
+                      : 'var(--color-text-tertiary)',
+                    opacity: 0.5
                   }}
                 >
-                  <span>{message.timestamp.toLocaleTimeString()}</span>
-                  {message.role === 'assistant' && !message.isStreaming && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.5 }}
-                      className="flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-xs">Complete</span>
-                    </motion.span>
-                  )}
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
-              </motion.div>
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
@@ -618,7 +759,7 @@ export const CodexChat = ({
             <button
               onClick={handleSendMessage}
               disabled={isLoading || !input.trim() || !isConnected}
-              className="p-2 transition-all"
+              className="p-2 transition-all flex items-center justify-center"
               style={{
                 backgroundColor: 'transparent',
                 color: isLoading || !input.trim() || !isConnected
@@ -644,7 +785,7 @@ export const CodexChat = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               )}
