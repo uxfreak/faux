@@ -280,9 +280,9 @@
 
       const rect = element.getBoundingClientRect();
       
-      // Update overlay position and size
-      this.overlay.style.left = `${rect.left + window.scrollX}px`;
-      this.overlay.style.top = `${rect.top + window.scrollY}px`;
+      // Update overlay position and size (fixed positioning uses viewport coordinates directly)
+      this.overlay.style.left = `${rect.left}px`;
+      this.overlay.style.top = `${rect.top}px`;
       this.overlay.style.width = `${rect.width}px`;
       this.overlay.style.height = `${rect.height}px`;
       this.overlay.style.display = 'block';
@@ -290,8 +290,8 @@
       // Update tooltip
       const tooltipText = this.getElementLabel(element);
       this.tooltip.textContent = tooltipText;
-      this.tooltip.style.left = `${rect.left + window.scrollX}px`;
-      this.tooltip.style.top = `${rect.top + window.scrollY - 25}px`;
+      this.tooltip.style.left = `${rect.left}px`;
+      this.tooltip.style.top = `${rect.top - 25}px`;
       this.tooltip.style.display = 'block';
 
       // Adjust tooltip position if it goes off screen
