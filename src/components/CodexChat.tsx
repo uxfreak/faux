@@ -852,11 +852,16 @@ Remember: You're a prototyping partner who makes things happen while speaking th
         return newText;
       });
       
-      // Focus input after transcription
+      // Auto-resize textarea if multiline and focus
       setTimeout(() => {
-        inputRef.current?.focus();
-        // Move cursor to end
         if (inputRef.current) {
+          // Reset and recalculate height for multiline text
+          inputRef.current.style.height = '36px';
+          const scrollHeight = inputRef.current.scrollHeight;
+          inputRef.current.style.height = Math.min(scrollHeight, 120) + 'px';
+          
+          // Focus and move cursor to end
+          inputRef.current.focus();
           inputRef.current.setSelectionRange(inputRef.current.value.length, inputRef.current.value.length);
         }
       }, 100);
@@ -1595,7 +1600,7 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 color: isRecording 
                   ? 'var(--color-action-danger)'
                   : isTranscribing
-                    ? 'var(--color-text-tertiary)'
+                    ? 'var(--color-text-secondary)'
                     : (isLoading || !isConnected)
                       ? 'var(--color-text-tertiary)'
                       : 'var(--color-text-secondary)',
@@ -1604,7 +1609,7 @@ Remember: You're a prototyping partner who makes things happen while speaking th
               }}
               onMouseEnter={(e) => {
                 if (!isLoading && isConnected && !isTranscribing && !isRecording) {
-                  e.currentTarget.style.color = 'var(--color-accent-primary)';
+                  e.currentTarget.style.color = 'var(--color-text-primary)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -1620,10 +1625,13 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 </svg>
               ) : isRecording ? (
                 <>
-                  <svg className="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 14a4 4 0 01-4-4V6a4 4 0 118 0v4a4 4 0 01-4 4z" />
-                    <path d="M16 10v1a4 4 0 01-8 0v-1M12 14v4m-2 2h4" />
-                  </svg>
+                  <div className="audio-wave" style={{ color: 'var(--color-action-danger)' }}>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
                   <span 
                     className="absolute -top-1 -right-1 px-1 rounded text-xs"
                     style={{
