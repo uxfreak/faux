@@ -124,6 +124,10 @@
       if (this.isActive) return;
 
       this.isActive = true;
+      this.hasSelection = false;  // Reset selection state for new inspection
+      this.currentElement = null;
+      this.hoveredElement = null;
+      
       if (config) {
         this.config = { ...this.config, ...config };
       }
@@ -136,7 +140,7 @@
       // Add custom cursor
       document.body.style.cursor = 'crosshair';
       
-      console.log('Inspector activated');
+      console.log('Inspector activated - hover enabled');
     }
 
     /**
@@ -146,6 +150,9 @@
       if (!this.isActive) return;
 
       this.isActive = false;
+      this.hasSelection = false;  // Reset selection state
+      this.currentElement = null;
+      this.hoveredElement = null;
 
       // Remove event listeners
       document.removeEventListener('mousemove', this.handleMouseMove, true);
@@ -158,7 +165,7 @@
       // Hide overlay
       this.hideOverlay();
 
-      console.log('Inspector deactivated');
+      console.log('Inspector deactivated - state reset');
     }
 
     /**
