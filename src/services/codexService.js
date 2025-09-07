@@ -261,6 +261,13 @@ class CodexService extends EventEmitter {
   handleTaskStarted(event) {
     console.log(`🚀 Task started: ${event.id}`);
     
+    // Reset working status flags for new task cycle
+    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+      const session = this.sessions.get(this.currentSessionId);
+      session.hasEmittedAnalyzing = false;
+      session.hasEmittedUpdating = false;
+    }
+    
     // Emit working indicator when task starts
     this.emit('workingStatus', {
       sessionId: this.currentSessionId,
@@ -278,6 +285,14 @@ class CodexService extends EventEmitter {
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const session = this.sessions.get(this.currentSessionId);
       session.reasoningContent += '\n--- New Reasoning Section ---\n';
+      
+      // CRITICAL: Reset streaming content when a new loop begins
+      // This prevents message accumulation across loops
+      if (session.streamingContent && session.streamingContent.length > 0) {
+        console.log('🔄 New loop detected - resetting streaming content');
+        session.streamingContent = '';
+        session.hasEmittedUpdating = false;
+      }
     }
     this.emit('reasoningSectionBreak', event);
   }
@@ -288,6 +303,24 @@ class CodexService extends EventEmitter {
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const session = this.sessions.get(this.currentSessionId);
       session.reasoningContent += delta;
+      
+      // Emit working status for timeline UI - first reasoning means analyzing
+      if (!session.hasEmittedAnalyzing) {
+        this.emit('workingStatus', {
+          sessionId: this.currentSessionId,
+          isWorking: true,
+          message: 'Analyzing'
+        });
+        session.hasEmittedAnalyzing = true;
+        
+        // Reset streaming content when starting a new reasoning phase
+        // This happens when reasoning starts after a message was sent
+        if (session.streamingContent && session.streamingContent.length > 0) {
+          console.log('🔄 New reasoning phase detected - resetting streaming content');
+          session.streamingContent = '';
+          session.hasEmittedUpdating = false;
+        }
+      }
     }
     
     this.emit('reasoningDelta', {
@@ -303,6 +336,9 @@ class CodexService extends EventEmitter {
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const session = this.sessions.get(this.currentSessionId);
       session.reasoningContent = fullReasoning;
+      // Reset the analyzing flag after reasoning completes
+      // so next reasoning will trigger a new "Analyzing" status
+      session.hasEmittedAnalyzing = false;
     }
     
     this.emit('reasoningComplete', {
@@ -321,6 +357,16 @@ class CodexService extends EventEmitter {
       const session = this.sessions.get(this.currentSessionId);
       session.streamingContent += delta;
       session.lastUsed = new Date();
+      
+      // Emit working status for timeline UI - message means updating/creating
+      if (!session.hasEmittedUpdating) {
+        this.emit('workingStatus', {
+          sessionId: this.currentSessionId,
+          isWorking: true,
+          message: 'Updating'
+        });
+        session.hasEmittedUpdating = true;
+      }
     }
     
     // Emit streaming update for UI
@@ -334,26 +380,16 @@ class CodexService extends EventEmitter {
   handleMessageComplete(event) {
     const finalMessage = event.msg.message;
     
-    console.log(`📤 Message complete: ${finalMessage?.substring(0, 100)}...`);
+    console.log(`📤 Message complete (intermediate): ${finalMessage?.substring(0, 100)}...`);
     
-    // Each agent_message is a separate paragraph/section that should be on a new line
-    // Add double newline to separate from previous content
-    if (finalMessage) {
-      const separator = this.sessions.get(this.currentSessionId)?.streamingContent ? '\n\n' : '';
-      
-      if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
-        const session = this.sessions.get(this.currentSessionId);
-        session.streamingContent = (session.streamingContent || '') + separator + finalMessage;
-        session.lastUsed = new Date();
-      }
-      
-      // Emit this as a delta with newlines to separate messages
-      this.emit('messageStream', {
-        sessionId: this.currentSessionId,
-        delta: separator + finalMessage,
-        content: this.sessions.get(this.currentSessionId)?.streamingContent || ''
-      });
-    }
+    // IMPORTANT: agent_message events are intermediate states from the agent
+    // They are NOT meant to be displayed to the user
+    // We should ONLY show content from:
+    // 1. agent_message_delta events (for real streaming)
+    // 2. task_complete event (for the final message)
+    
+    // Do NOT emit any events here - these are internal agent states
+    // that would cause message accumulation if shown
   }
 
   /**
@@ -382,13 +418,17 @@ class CodexService extends EventEmitter {
     if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
       const session = this.sessions.get(this.currentSessionId);
       
-      // Don't store the message here - it's already been accumulated via streaming
-      // Just clear the streaming state
+      // Store the final complete message from task_complete
+      const finalContent = event.msg.last_agent_message || session.streamingContent || '';
+      
+      // Clear the streaming state and flags
       session.streamingContent = '';
+      session.hasEmittedAnalyzing = false;
+      session.hasEmittedUpdating = false;
       session.lastUsed = new Date();
     }
     
-    // Clear working status
+    // Clear working status BEFORE emitting message complete
     this.emit('workingStatus', {
       sessionId: this.currentSessionId,
       isWorking: false,
@@ -396,7 +436,7 @@ class CodexService extends EventEmitter {
     });
     
     // Emit final message complete with the full message
-    // The UI will use this to finalize the streaming message
+    // This is the ONLY place we finalize the message
     this.emit('messageComplete', {
       sessionId: this.currentSessionId,
       content: event.msg.last_agent_message,

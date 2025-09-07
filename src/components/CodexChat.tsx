@@ -6,6 +6,14 @@ import { Project } from '../types/Project';
 import { codexIPCService, CodexApprovalRequest } from '../services/codexIPC';
 import { CodexApprovalDialog } from './CodexApprovalDialog';
 
+interface LoopState {
+  id: string;
+  status: string | null;
+  message: string;
+  isStreaming: boolean;
+  phase: 'thinking' | 'executing' | 'messaging' | 'idle';
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -13,6 +21,7 @@ interface Message {
   timestamp: Date;
   isStreaming?: boolean;
   attachedImages?: AttachedImage[]; // Track images in messages
+  steps?: AgentStep[]; // Track agent reasoning phases
 }
 
 interface AttachedImage {
@@ -50,6 +59,16 @@ export const CodexChat = ({
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [currentLoop, setCurrentLoop] = useState<LoopState>({
+    id: '',
+    status: null,
+    message: '',
+    isStreaming: false,
+    phase: 'idle'
+  });
+  const previousPhaseRef = useRef<string>('idle');
+  const usedThinkingVariants = useRef<Set<string>>(new Set());
+  const usedExecutingVariants = useRef<Set<string>>(new Set());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,15 +77,109 @@ export const CodexChat = ({
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasLoadedSession = useRef(false);
 
+  // Helper functions for status variants
+  const getThinkingVariant = (): string => {
+    const variants = [
+      'Analyzing', 'Thinking', 'Reviewing', 'Considering',
+      'Planning', 'Studying', 'Evaluating', 'Processing'
+    ];
+    
+    const available = variants.filter(v => !usedThinkingVariants.current.has(v));
+    if (available.length === 0) {
+      usedThinkingVariants.current.clear();
+      return variants[0];
+    }
+    
+    const selected = available[Math.floor(Math.random() * available.length)];
+    usedThinkingVariants.current.add(selected);
+    return selected;
+  };
+
+  const getExecutingVariant = (): string => {
+    const variants = [
+      'Updating', 'Implementing', 'Modifying', 'Applying',
+      'Building', 'Creating', 'Adjusting', 'Refining'
+    ];
+    
+    const available = variants.filter(v => !usedExecutingVariants.current.has(v));
+    if (available.length === 0) {
+      usedExecutingVariants.current.clear();
+      return variants[0];
+    }
+    
+    const selected = available[Math.floor(Math.random() * available.length)];
+    usedExecutingVariants.current.add(selected);
+    return selected;
+  };
+
+  // Loop management functions
+  const startNewLoop = () => {
+    const newLoopId = `loop-${Date.now()}`;
+    setCurrentLoop({
+      id: newLoopId,
+      status: null,
+      message: '',
+      isStreaming: false,
+      phase: 'idle'
+    });
+    // Reset streaming content for new loop
+    setStreamingContent('');
+    streamingContentRef.current = '';
+  };
+
+  const updateLoopStatus = (status: string, phase: 'thinking' | 'executing') => {
+    setCurrentLoop(prev => ({
+      ...prev,
+      status,
+      message: '',
+      phase,
+      isStreaming: false
+    }));
+  };
+
+  const clearLoopStatus = () => {
+    setCurrentLoop(prev => ({
+      ...prev,
+      status: null,
+      phase: 'messaging'
+    }));
+  };
+
+  const updateLoopMessage = (content: string, isStreaming: boolean) => {
+    setCurrentLoop(prev => ({
+      ...prev,
+      message: content,
+      isStreaming,
+      phase: 'messaging'
+    }));
+  };
+
   // Save session data to localStorage
-  const saveSessionData = () => {
+  const saveSessionData = (messagesToSave?: Message[]) => {
     if (currentSessionId && project.id) {
+      // Use provided messages or current state
+      const finalMessages = messagesToSave || messages;
+      
+      // If the last message is still streaming, incorporate the streaming content
+      const processedMessages = finalMessages.map((msg, idx) => {
+        if (idx === finalMessages.length - 1 && msg.role === 'assistant' && msg.isStreaming) {
+          // Incorporate any streaming content into the message before saving
+          return {
+            ...msg,
+            content: streamingContentRef.current || msg.content,
+            isStreaming: false // Mark as complete for saved version
+          };
+        }
+        return msg;
+      });
+      
       const sessionData = {
         sessionId: currentSessionId,
-        messages: messages,
+        messages: processedMessages,
         timestamp: new Date().toISOString()
       };
       localStorage.setItem(`codex_session_${project.id}`, JSON.stringify(sessionData));
+      console.log(`💾 Saved session with ${processedMessages.length} messages`);
     }
   };
 
@@ -119,10 +232,14 @@ export const CodexChat = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  // Save session when messages change
+  // Save session when messages change (but not while streaming)
   useEffect(() => {
     if (messages.length > 0 && currentSessionId) {
-      saveSessionData();
+      // Only save if the last message is not streaming
+      const lastMessage = messages[messages.length - 1];
+      if (!lastMessage.isStreaming) {
+        saveSessionData(messages);
+      }
     }
   }, [messages, currentSessionId]);
 
@@ -203,6 +320,9 @@ export const CodexChat = ({
         setStreamingContent(prev => {
           const updated = prev + data.delta;
           streamingContentRef.current = updated;
+          // Update loop message while streaming
+          updateLoopMessage(updated, true);
+          previousPhaseRef.current = 'messaging';
           return updated;
         });
       }
@@ -218,21 +338,41 @@ export const CodexChat = ({
           messageTimeoutRef.current = null;
         }
         
-        // Update the last assistant message with the completed content
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-            // If we have accumulated streaming content, use that
-            // Otherwise use the final message content (for cases where AI starts with tools)
-            // This handles both streaming and non-streaming scenarios
-            lastMessage.content = streamingContentRef.current || data.content || 'No response received';
-            lastMessage.isStreaming = false;
-          }
-          return newMessages;
-        });
+        // Get the final content
+        const finalContent = streamingContentRef.current || data.content || 'No response received';
         
-        setStreamingContent(''); // Clear any streaming content
+        // If this is the final task_complete message, add to permanent messages
+        if (data.isFinal) {
+          // Create the final assistant message
+          const assistantMessage: Message = {
+            id: `msg-${Date.now()}`,
+            role: 'assistant',
+            content: finalContent,
+            timestamp: new Date(),
+            isStreaming: false
+          };
+          
+          setMessages(prev => {
+            const newMessages = [...prev, assistantMessage];
+            saveSessionData(newMessages);
+            return newMessages;
+          });
+          
+          // Clear the loop completely
+          setCurrentLoop({
+            id: '',
+            status: null,
+            message: '',
+            isStreaming: false,
+            phase: 'idle'
+          });
+        } else {
+          // Just a loop message complete, keep it in currentLoop
+          updateLoopMessage(finalContent, false);
+        }
+        
+        // Clear streaming state
+        setStreamingContent('');
         streamingContentRef.current = '';
         setIsLoading(false);
         setIsWorking(false);
@@ -265,12 +405,45 @@ export const CodexChat = ({
       }
     });
 
-    // Working status listener
+    // Working status listener - simplified for live status display
     const unsubscribeWorkingStatus = codexIPCService.onWorkingStatus((data) => {
       if (isMounted) {
         console.log('📡 Working status received:', data);
         setIsWorking(data.isWorking);
         setWorkingMessage(data.message || '');
+        
+        if (data.isWorking && data.message && !data.message.toLowerCase().includes('working on it')) {
+          const message = data.message.toLowerCase();
+          
+          // Detect phase and update status
+          if (message.includes('analyz') || message.includes('consider') || 
+              message.includes('plan') || message.includes('review') || 
+              message.includes('study') || message.includes('think') ||
+              message.includes('understand') || message.includes('evaluat')) {
+            
+            // Check for new loop (thinking after messaging)
+            if (previousPhaseRef.current === 'messaging') {
+              startNewLoop();
+            }
+            
+            updateLoopStatus(getThinkingVariant(), 'thinking');
+            previousPhaseRef.current = 'thinking';
+            
+          } else if (message.includes('updat') || message.includes('modif') || 
+                     message.includes('adjust') || message.includes('apply') || 
+                     message.includes('implement') || message.includes('chang') ||
+                     message.includes('creat') || message.includes('generat') ||
+                     message.includes('build') || message.includes('mak')) {
+            
+            updateLoopStatus(getExecutingVariant(), 'executing');
+            previousPhaseRef.current = 'executing';
+          }
+        } else if (!data.isWorking) {
+          // Clear status when not working
+          if (currentLoop.phase === 'thinking' || currentLoop.phase === 'executing') {
+            clearLoopStatus();
+          }
+        }
       }
     });
 
@@ -280,8 +453,20 @@ export const CodexChat = ({
     return () => {
       isMounted = false;
       
-      // Save session on unmount
-      saveSessionData();
+      // Save session on unmount with current streaming content incorporated
+      if (currentSessionId && project.id) {
+        const finalMessages = messages.map((msg, idx) => {
+          if (idx === messages.length - 1 && msg.role === 'assistant' && msg.isStreaming) {
+            return {
+              ...msg,
+              content: streamingContentRef.current || msg.content,
+              isStreaming: false
+            };
+          }
+          return msg;
+        });
+        saveSessionData(finalMessages);
+      }
       
       unsubscribeConnected();
       unsubscribeDisconnected();
@@ -294,6 +479,46 @@ export const CodexChat = ({
       unsubscribeWorkingStatus();
     };
   }, []);
+
+  // Helper function to wrap prompts for designer-friendly responses
+  const wrapPromptForDesigner = (prompt: string): string => {
+    return `${prompt}
+
+🎨 YOU ARE A PROTOTYPING AGENT collaborating with a UX designer:
+
+Your role is to be their technical partner who brings their design visions to life in the prototype. You will actively make changes to the project based on their requests, but communicate like a fellow designer, not a developer.
+
+CRITICAL INSTRUCTIONS:
+
+✅ WHAT YOU SHOULD DO:
+- Actually implement and update the prototype based on their requests
+- Make real changes to improve the user experience
+- Iterate on the design by modifying the project
+- Test and validate that changes work properly
+- Be proactive in suggesting design improvements
+
+✅ HOW TO COMMUNICATE:
+- Talk like a design collaborator, not a developer
+- Describe what you're doing in visual and experiential terms
+- Say things like "I'll update the navigation to be more intuitive" not "I'll modify the Nav component"
+- Focus on outcomes: "The form now has better visual hierarchy with clearer labels"
+- Use design language: spacing, hierarchy, flow, interaction patterns, visual feedback
+- Celebrate design wins: "Great idea! This will make the experience much smoother"
+
+❌ NEVER IN YOUR MESSAGES:
+- Show any code snippets or technical syntax
+- Mention file names, functions, or technical terms
+- Explain HOW you're implementing (just WHAT the user will see)
+- Use developer jargon (components, props, state, API, etc.)
+- Talk about technical constraints unless absolutely necessary (and then frame it in design terms)
+
+EXAMPLES OF GOOD RESPONSES:
+- "I've updated the navigation - it now stays visible when scrolling and has a subtle shadow for better depth"
+- "The form validation now shows friendly messages right below each field with a gentle fade-in animation"
+- "I've reorganized the dashboard cards to follow a clear visual hierarchy with the most important metrics at the top"
+
+Remember: You're a prototyping partner who makes things happen while speaking the designer's language. Be enthusiastic about design improvements and always frame your work in terms of user experience.`;
+  };
 
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedImages.length === 0) || isLoading || !isConnected) return;
@@ -324,29 +549,48 @@ export const CodexChat = ({
     setIsLoading(true);
     setStreamingContent('');
     streamingContentRef.current = '';
+    
+    // Reset textarea height after sending
+    if (inputRef.current) {
+      inputRef.current.style.height = '36px';
+    }
 
-    // Add assistant message placeholder
-    const assistantMessage: Message = {
-      id: `msg-${Date.now() + 1}`,
-      role: 'assistant',
-      content: '',
-      timestamp: new Date(),
-      isStreaming: true
-    };
-    setMessages(prev => [...prev, assistantMessage]);
+    // Don't add a message placeholder anymore - we'll use currentLoop for display
+    // and only add the final message when complete
+    
+    // Reset current loop for new message
+    setCurrentLoop({
+      id: `loop-${Date.now()}`,
+      status: null,
+      message: '',
+      isStreaming: false,
+      phase: 'idle'
+    });
 
     // Set a very long fallback timeout (5 minutes) in case messageComplete event doesn't arrive
     messageTimeoutRef.current = setTimeout(() => {
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
-          // Just finalize whatever content we have
-          lastMessage.content = streamingContentRef.current || lastMessage.content || '';
-          lastMessage.isStreaming = false;
-        }
-        return newMessages;
+      // Create a timeout message if we never got a proper response
+      const timeoutContent = streamingContentRef.current || currentLoop.message || 'Response timed out';
+      if (timeoutContent) {
+        const assistantMessage: Message = {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: timeoutContent,
+          timestamp: new Date(),
+          isStreaming: false
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      }
+      
+      // Clear the loop
+      setCurrentLoop({
+        id: '',
+        status: null,
+        message: '',
+        isStreaming: false,
+        phase: 'idle'
       });
+      
       setStreamingContent('');
       streamingContentRef.current = '';
       setIsLoading(false);
@@ -358,9 +602,10 @@ export const CodexChat = ({
       
       if (!currentSessionId) {
         // Start new conversation with project context
-        const projectPrompt = `Project: ${project.name}\nPath: ${project.path || 'Not specified'}\nDescription: ${project.description || 'No description'}\n\nUser request: ${messageContent}`;
+        const basePrompt = `Project: ${project.name}\nPath: ${project.path || 'Not specified'}\nDescription: ${project.description || 'No description'}\n\nUser request: ${messageContent}`;
+        const designerPrompt = wrapPromptForDesigner(basePrompt);
         
-        response = await codexIPCService.startConversation(projectPrompt, {
+        response = await codexIPCService.startConversation(designerPrompt, {
           model: 'gpt-5',
           sandbox: 'danger-full-access',
           approvalPolicy: 'untrusted',
@@ -375,8 +620,9 @@ export const CodexChat = ({
           setCurrentSessionId(response.sessionId);
         }
       } else {
-        // Continue existing conversation
-        response = await codexIPCService.continueConversation(currentSessionId, messageContent);
+        // Continue existing conversation with designer context
+        const designerPrompt = wrapPromptForDesigner(messageContent);
+        response = await codexIPCService.continueConversation(currentSessionId, designerPrompt);
       }
       
       // Attachments already cleared above
@@ -822,7 +1068,7 @@ export const CodexChat = ({
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[75%] rounded-lg px-3 py-2 text-sm`}
+                className={`max-w-[75%] rounded-lg text-sm`}
                 style={{
                   backgroundColor: message.role === 'user' 
                     ? 'var(--color-accent-primary)'
@@ -835,47 +1081,49 @@ export const CodexChat = ({
                     : 'none'
                 }}
               >
-                <div className="break-words">
-                  {/* Show attached images for user messages */}
-                  {message.role === 'user' && message.attachedImages && message.attachedImages.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {message.attachedImages.map((img, idx) => (
-                        <div 
-                          key={idx}
-                          className="relative"
-                          style={{ width: '60px', height: '60px' }}
-                        >
-                          <img
-                            src={img.thumbnail}
-                            alt={img.name}
-                            className="w-full h-full object-cover rounded"
-                            style={{ 
-                              border: '1px solid var(--color-border-primary)',
-                              backgroundColor: 'var(--color-surface-secondary)'
-                            }}
-                            onError={(e) => {
-                              // Fallback if thumbnail fails
-                              e.currentTarget.style.display = 'none';
-                              const parent = e.currentTarget.parentElement;
-                              if (parent) {
-                                const fallback = document.createElement('div');
-                                fallback.className = 'w-full h-full rounded flex items-center justify-center';
-                                fallback.style.backgroundColor = 'var(--color-surface-secondary)';
-                                fallback.style.border = '1px solid var(--color-border-primary)';
-                                fallback.innerHTML = `
-                                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--color-text-tertiary)">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                `;
-                                parent.appendChild(fallback);
-                              }
-                            }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {message.isStreaming ? (
+                {/* Regular message content */}
+                <div className="px-3 py-2">
+                  <div className="break-words">
+                    {/* Show attached images for user messages */}
+                    {message.role === 'user' && message.attachedImages && message.attachedImages.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {message.attachedImages.map((img, idx) => (
+                          <div 
+                            key={idx}
+                            className="relative"
+                            style={{ width: '60px', height: '60px' }}
+                          >
+                            <img
+                              src={img.thumbnail}
+                              alt={img.name}
+                              className="w-full h-full object-cover rounded"
+                              style={{ 
+                                border: '1px solid var(--color-border-primary)',
+                                backgroundColor: 'var(--color-surface-secondary)'
+                              }}
+                              onError={(e) => {
+                                // Fallback if thumbnail fails
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) {
+                                  const fallback = document.createElement('div');
+                                  fallback.className = 'w-full h-full rounded flex items-center justify-center';
+                                  fallback.style.backgroundColor = 'var(--color-surface-secondary)';
+                                  fallback.style.border = '1px solid var(--color-border-primary)';
+                                  fallback.innerHTML = `
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--color-text-tertiary)">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  `;
+                                  parent.appendChild(fallback);
+                                }
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {message.isStreaming ? (
                     <>
                       {streamingContent ? (
                         <span>{streamingContent}</span>
@@ -965,22 +1213,105 @@ export const CodexChat = ({
                       {message.content}
                     </ReactMarkdown>
                   )}
-                </div>
-                <div
-                  className="text-xs mt-1"
-                  style={{
-                    color: message.role === 'user' 
-                      ? 'rgba(255,255,255,0.6)'
-                      : 'var(--color-text-tertiary)',
-                    opacity: 0.5
-                  }}
-                >
-                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
+                    </div>
+                  </div>
+                  {/* Timestamp for regular messages */}
+                  <div
+                    className="text-xs mt-1 px-3 pb-2"
+                    style={{
+                      color: message.role === 'user' 
+                        ? 'rgba(255,255,255,0.6)'
+                        : 'var(--color-text-tertiary)',
+                      opacity: 0.5
+                    }}
+                  >
+                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
               </div>
             </motion.div>
           ))}
         </AnimatePresence>
+
+        {/* Current loop display (temporary, shows status or message) */}
+        {currentLoop.phase !== 'idle' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex"
+          >
+            <div
+              className={`max-w-[75%] rounded-lg px-3 py-2 text-sm`}
+              style={{
+                backgroundColor: 'var(--color-bg-secondary)',
+                color: 'var(--color-text-primary)',
+                border: '1px solid var(--color-border-primary)'
+              }}
+            >
+              {/* Show status OR message, never both */}
+              {currentLoop.status && !currentLoop.message ? (
+                <motion.div
+                  key={currentLoop.status}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="shimmer-text font-medium"
+                >
+                  {currentLoop.status}
+                </motion.div>
+              ) : currentLoop.message ? (
+                <div className="break-words">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                      ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                      ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                      li: ({ children }) => <li className="mb-1">{children}</li>,
+                      code: ({ inline, className, children, ...props }) => {
+                        const codeString = String(children).replace(/\n$/, '');
+                        const isReallyInline = inline !== false && !codeString.includes('\n') && codeString.length < 80;
+                        
+                        return isReallyInline ? (
+                          <code 
+                            className="px-1 py-0.5 rounded text-xs" 
+                            style={{
+                              backgroundColor: 'var(--color-surface-secondary)',
+                              color: 'var(--color-text-primary)',
+                              display: 'inline'
+                            }}
+                            {...props}
+                          >
+                            {children}
+                          </code>
+                        ) : (
+                          <pre 
+                            className="p-2 rounded text-xs overflow-x-auto mb-2" 
+                            style={{
+                              backgroundColor: 'var(--color-surface-secondary)'
+                            }}
+                          >
+                            <code className={className} {...props}>{children}</code>
+                          </pre>
+                        );
+                      },
+                      blockquote: ({ children }) => (
+                        <blockquote className="pl-3 border-l-2 mb-2" style={{
+                          borderColor: 'var(--color-border-primary)',
+                          color: 'var(--color-text-secondary)'
+                        }}>{children}</blockquote>
+                      )
+                    }}
+                  >
+                    {currentLoop.message}
+                  </ReactMarkdown>
+                  {currentLoop.isStreaming && (
+                    <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse" />
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -1097,9 +1428,11 @@ export const CodexChat = ({
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                // Auto-resize textarea
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                // Auto-resize textarea with proper min height
+                const target = e.target;
+                target.style.height = '36px'; // Reset to min height first
+                const scrollHeight = target.scrollHeight;
+                target.style.height = Math.min(scrollHeight, 120) + 'px';
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
@@ -1113,7 +1446,7 @@ export const CodexChat = ({
                 color: 'var(--color-text-primary)',
                 opacity: isLoading || !isConnected ? 0.5 : 1,
                 cursor: isLoading || !isConnected ? 'not-allowed' : 'text',
-                height: '36px',
+                minHeight: '36px',
                 maxHeight: '120px',
                 overflow: 'auto'
               }}
