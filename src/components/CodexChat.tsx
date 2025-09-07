@@ -12,6 +12,7 @@ interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  attachedImages?: AttachedImage[]; // Track images in messages
 }
 
 interface AttachedImage {
@@ -299,22 +300,27 @@ export const CodexChat = ({
 
     // Build the message content with attached images
     let messageContent = input;
-    if (attachedImages.length > 0) {
+    const currentAttachedImages = [...attachedImages]; // Copy current attachments
+    
+    if (currentAttachedImages.length > 0) {
       messageContent += '\n\nAttached images:';
-      attachedImages.forEach((img, idx) => {
+      currentAttachedImages.forEach((img, idx) => {
         messageContent += `\n- Image ${idx + 1}: ${img.path}`;
       });
+      console.log('📎 Images attached to prompt:', currentAttachedImages.map(img => img.path));
     }
 
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
       content: input, // Show only the text in the UI
-      timestamp: new Date()
+      timestamp: new Date(),
+      attachedImages: currentAttachedImages // Include images in message
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setAttachedImages([]); // Clear attachments immediately
     setIsLoading(true);
     setStreamingContent('');
     streamingContentRef.current = '';
@@ -373,8 +379,7 @@ export const CodexChat = ({
         response = await codexIPCService.continueConversation(currentSessionId, messageContent);
       }
       
-      // Clear attached images after sending
-      setAttachedImages([]);
+      // Attachments already cleared above
       
       if (!response.success && response.error) {
         throw new Error(response.error);
@@ -522,6 +527,10 @@ export const CodexChat = ({
 
     if (newImages.length > 0) {
       setAttachedImages(prev => [...prev, ...newImages]);
+      // Refocus input after file selection
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
 
     // Reset file input
@@ -541,6 +550,10 @@ export const CodexChat = ({
           const processedImage = await processImageFile(file);
           if (processedImage) {
             setAttachedImages(prev => [...prev, processedImage]);
+            // Refocus the input after processing the image
+            setTimeout(() => {
+              inputRef.current?.focus();
+            }, 100);
           }
         }
       }
@@ -586,6 +599,10 @@ export const CodexChat = ({
 
     if (newImages.length > 0) {
       setAttachedImages(prev => [...prev, ...newImages]);
+      // Refocus input after drag and drop
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -811,7 +828,7 @@ export const CodexChat = ({
                     ? 'var(--color-accent-primary)'
                     : 'var(--color-surface-primary)',
                   color: message.role === 'user'
-                    ? 'var(--color-button-text)'
+                    ? 'white'
                     : 'var(--color-text-primary)',
                   border: message.role === 'assistant' 
                     ? '1px solid var(--color-border-primary)'
@@ -819,6 +836,45 @@ export const CodexChat = ({
                 }}
               >
                 <div className="break-words">
+                  {/* Show attached images for user messages */}
+                  {message.role === 'user' && message.attachedImages && message.attachedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {message.attachedImages.map((img, idx) => (
+                        <div 
+                          key={idx}
+                          className="relative"
+                          style={{ width: '60px', height: '60px' }}
+                        >
+                          <img
+                            src={img.thumbnail}
+                            alt={img.name}
+                            className="w-full h-full object-cover rounded"
+                            style={{ 
+                              border: '1px solid var(--color-border-primary)',
+                              backgroundColor: 'var(--color-surface-secondary)'
+                            }}
+                            onError={(e) => {
+                              // Fallback if thumbnail fails
+                              e.currentTarget.style.display = 'none';
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                const fallback = document.createElement('div');
+                                fallback.className = 'w-full h-full rounded flex items-center justify-center';
+                                fallback.style.backgroundColor = 'var(--color-surface-secondary)';
+                                fallback.style.border = '1px solid var(--color-border-primary)';
+                                fallback.innerHTML = `
+                                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--color-text-tertiary)">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                `;
+                                parent.appendChild(fallback);
+                              }
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {message.isStreaming ? (
                     <>
                       {streamingContent ? (
@@ -826,9 +882,7 @@ export const CodexChat = ({
                       ) : (
                         <motion.div className="flex items-center gap-2">
                           <motion.span
-                            animate={{ opacity: [0.4, 1, 0.4] }}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                            style={{ color: 'var(--color-text-secondary)' }}
+                            className="shimmer-text font-medium"
                           >
                             Thinking
                           </motion.span>
@@ -856,9 +910,8 @@ export const CodexChat = ({
                         <motion.span
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="block mt-2 text-xs"
+                          className="block mt-2 text-xs shimmer-text"
                           style={{ 
-                            color: 'var(--color-text-tertiary)',
                             fontStyle: 'italic'
                           }}
                         >
@@ -875,8 +928,10 @@ export const CodexChat = ({
                         ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
                         li: ({ children }) => <li className="mb-1">{children}</li>,
                         code: ({ inline, className, children, ...props }) => {
-                          const match = /language-(\w+)/.exec(className || '');
-                          return inline ? (
+                          const codeString = String(children).replace(/\n$/, '');
+                          const isReallyInline = inline !== false && !codeString.includes('\n') && codeString.length < 80;
+                          
+                          return isReallyInline ? (
                             <code 
                               className="px-1 py-0.5 rounded text-xs" 
                               style={{
@@ -973,21 +1028,50 @@ export const CodexChat = ({
               {attachedImages.map(img => (
                 <div 
                   key={img.id} 
-                  className="relative group flex-shrink-0"
+                  className="relative group flex-shrink-0 overflow-visible"
                   style={{ width: '60px', height: '60px' }}
                 >
                   <img
                     src={img.thumbnail}
                     alt={img.name}
                     className="w-full h-full object-cover rounded"
-                    style={{ border: '1px solid var(--color-border-primary)' }}
+                    style={{ 
+                      border: '1px solid var(--color-border-primary)',
+                      backgroundColor: 'var(--color-surface-secondary)'
+                    }}
+                    onError={(e) => {
+                      // Fallback to placeholder if thumbnail fails
+                      e.currentTarget.style.display = 'none';
+                      const parent = e.currentTarget.parentElement;
+                      if (parent && !parent.querySelector('.image-placeholder')) {
+                        const placeholder = document.createElement('div');
+                        placeholder.className = 'image-placeholder w-full h-full rounded flex items-center justify-center';
+                        placeholder.style.backgroundColor = 'var(--color-surface-secondary)';
+                        placeholder.style.border = '1px solid var(--color-border-primary)';
+                        placeholder.innerHTML = `
+                          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--color-text-tertiary)">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        `;
+                        parent.insertBefore(placeholder, parent.firstChild);
+                      }
+                    }}
                   />
                   <button
                     onClick={() => removeImage(img.id)}
-                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-0 right-0 w-4 h-4 rounded-full flex items-center justify-center transition-all z-10"
                     style={{
                       backgroundColor: 'var(--color-error)',
-                      color: 'white'
+                      color: 'white',
+                      opacity: 1,
+                      transform: 'scale(0.9)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(0.9)';
                     }}
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1007,14 +1091,19 @@ export const CodexChat = ({
         )}
         
         <div className="p-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Auto-resize textarea
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder="Ask about your project or request changes..."
+              placeholder="Ask about your project..."
               disabled={isLoading || !isConnected || isProcessingImage}
               rows={1}
               className="flex-1 resize-none px-3 py-2 focus:outline-none transition-all text-sm"
@@ -1024,8 +1113,9 @@ export const CodexChat = ({
                 color: 'var(--color-text-primary)',
                 opacity: isLoading || !isConnected ? 0.5 : 1,
                 cursor: isLoading || !isConnected ? 'not-allowed' : 'text',
-                minHeight: '36px',
-                maxHeight: '100px'
+                height: '36px',
+                maxHeight: '120px',
+                overflow: 'auto'
               }}
             />
             {/* Attachment button */}
@@ -1090,7 +1180,7 @@ export const CodexChat = ({
                   ? 'var(--color-text-tertiary)'
                   : 'var(--color-text-secondary)',
                 cursor: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 'not-allowed' : 'pointer',
-                opacity: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 0.3 : 1
+                opacity: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 0.5 : 1
               }}
               onMouseEnter={(e) => {
                 if (!isLoading && (input.trim() || attachedImages.length > 0) && isConnected) {
@@ -1116,11 +1206,6 @@ export const CodexChat = ({
             </button>
           </div>
         </div>
-        {input.length > 0 && (
-          <div className="px-3 pb-2 text-xs" style={{ color: 'var(--color-text-tertiary)', opacity: 0.4 }}>
-            <span>⏎ to send</span>
-          </div>
-        )}
       </div>
 
       {/* Approval Dialog */}

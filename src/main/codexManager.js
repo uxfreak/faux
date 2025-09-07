@@ -68,7 +68,13 @@ export class CodexManager {
     // Session management
     ipcMain.handle('codex:startConversation', async (event, prompt, config = {}) => {
       try {
-        const result = await codexService.startNewSession(prompt, config.label || 'New session');
+        // Extract project path from config
+        const projectPath = config.projectContext?.path || null;
+        const result = await codexService.startNewSession(
+          prompt, 
+          config.label || 'New session',
+          projectPath
+        );
         return result;
       } catch (error) {
         console.error('Start conversation error:', error);

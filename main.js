@@ -446,8 +446,8 @@ function setupIPCHandlers() {
         
         await fs.writeFile(filePath, buffer);
         
-        // Create thumbnail (base64, small size)
-        thumbnail = `data:image/${ext.slice(1)};base64,${buffer.toString('base64').slice(0, 4000)}...`;
+        // Create thumbnail (full base64 for preview)
+        thumbnail = `data:image/${ext.slice(1)};base64,${buffer.toString('base64')}`;
       } else {
         // Save base64 image data
         const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -465,13 +465,28 @@ function setupIPCHandlers() {
         }
 
         const timestamp = Date.now();
-        const fileName = filename || `image_${timestamp}.${ext}`;
+        const randomSuffix = Math.random().toString(36).substring(2, 8);
+        // If filename is provided and doesn't exist, use it; otherwise generate unique name
+        const baseFileName = filename || `image_${timestamp}_${randomSuffix}.${ext}`;
+        
+        // Ensure we don't overwrite existing files
+        let fileName = baseFileName;
+        let counter = 1;
         filePath = path.join(tempDir, fileName);
+        
+        while (await fs.access(filePath).then(() => true).catch(() => false)) {
+          const nameParts = baseFileName.split('.');
+          const extension = nameParts.pop();
+          const baseName = nameParts.join('.');
+          fileName = `${baseName}_${counter}.${extension}`;
+          filePath = path.join(tempDir, fileName);
+          counter++;
+        }
         
         await fs.writeFile(filePath, buffer);
         
-        // Create thumbnail (truncated base64 for preview)
-        thumbnail = `data:image/${ext};base64,${data.slice(0, 4000)}...`;
+        // Return the original base64 as thumbnail (it's already the correct size)
+        thumbnail = imageData;
       }
 
       // Clean up old images (older than 24 hours)
@@ -484,12 +499,17 @@ function setupIPCHandlers() {
         }
       }
 
+      const finalName = path.basename(filePath);
+      const finalSize = (await fs.stat(filePath)).size;
+      
+      console.log(`📸 Image saved: ${filePath} (${finalSize} bytes)`);
+      
       return {
         success: true,
         path: filePath,
         thumbnail,
-        name: path.basename(filePath),
-        size: (await fs.stat(filePath)).size
+        name: finalName,
+        size: finalSize
       };
     } catch (error) {
       console.error('Error saving image:', error);

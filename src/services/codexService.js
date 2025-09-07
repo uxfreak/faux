@@ -31,6 +31,7 @@ class CodexService extends EventEmitter {
     // Session management
     this.sessions = new Map(); // sessionId -> session data
     this.currentSessionId = null;
+    this.currentProjectPath = null; // Store current project path
     
     // Real-time streaming state
     this.eventQueue = [];
@@ -41,15 +42,20 @@ class CodexService extends EventEmitter {
 
   /**
    * Initialize and connect to Codex MCP with proper notification handler
+   * @param {string} projectPath - Optional project path to use as working directory
    */
-  async connect() {
+  async connect(projectPath = null) {
     if (this.isConnected || this.isConnecting) {
       console.log('🔄 Codex already connected or connecting');
       return true;
     }
 
     this.isConnecting = true;
+    this.currentProjectPath = projectPath;
     console.log('🔌 Connecting to Codex MCP...');
+    if (projectPath) {
+      console.log(`📁 Using project directory: ${projectPath}`);
+    }
 
     try {
       // Create MCP client
@@ -58,11 +64,18 @@ class CodexService extends EventEmitter {
         version: "1.0.0"
       });
 
-      // Create stdio transport
-      this.transport = new StdioClientTransport({
+      // Create stdio transport with project path as working directory
+      const transportConfig = {
         command: "codex",
         args: ["mcp"]
-      });
+      };
+      
+      // Set working directory if project path provided
+      if (projectPath) {
+        transportConfig.cwd = projectPath;
+      }
+      
+      this.transport = new StdioClientTransport(transportConfig);
 
       // CRITICAL: Use proper setNotificationHandler with Zod schema
       this.client.setNotificationHandler(CodexEventNotificationSchema, (notification) => {
@@ -115,6 +128,7 @@ class CodexService extends EventEmitter {
       this.streamingState.clear();
       this.eventQueue = [];
       this.currentSessionId = null;
+      this.currentProjectPath = null;
       
       console.log('👋 Disconnected from Codex MCP');
       this.emit('disconnected');
@@ -322,13 +336,23 @@ class CodexService extends EventEmitter {
     
     console.log(`📤 Message complete: ${finalMessage?.substring(0, 100)}...`);
     
-    // Don't emit anything for intermediate message completions
-    // They're redundant with the delta events
-    // We'll only use the final one from task_complete
-    
-    if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
-      const session = this.sessions.get(this.currentSessionId);
-      session.lastUsed = new Date();
+    // Each agent_message is a separate paragraph/section that should be on a new line
+    // Add double newline to separate from previous content
+    if (finalMessage) {
+      const separator = this.sessions.get(this.currentSessionId)?.streamingContent ? '\n\n' : '';
+      
+      if (this.currentSessionId && this.sessions.has(this.currentSessionId)) {
+        const session = this.sessions.get(this.currentSessionId);
+        session.streamingContent = (session.streamingContent || '') + separator + finalMessage;
+        session.lastUsed = new Date();
+      }
+      
+      // Emit this as a delta with newlines to separate messages
+      this.emit('messageStream', {
+        sessionId: this.currentSessionId,
+        delta: separator + finalMessage,
+        content: this.sessions.get(this.currentSessionId)?.streamingContent || ''
+      });
     }
   }
 
@@ -454,13 +478,24 @@ class CodexService extends EventEmitter {
 
   /**
    * Start a new conversation - Fixed parameters
+   * @param {string} prompt - The prompt to send
+   * @param {string} label - Optional label for the session
+   * @param {string} projectPath - Optional project path to set as working directory
    */
-  async startNewSession(prompt, label = null) {
-    if (!this.isConnected) {
+  async startNewSession(prompt, label = null, projectPath = null) {
+    // If we have a new project path and not connected, or different project, reconnect
+    if (projectPath && (!this.isConnected || this.currentProjectPath !== projectPath)) {
+      console.log(`🔄 Switching to project: ${projectPath}`);
+      await this.disconnect();
+      await this.connect(projectPath);
+    } else if (!this.isConnected) {
       throw new Error('Not connected to Codex MCP');
     }
 
-    console.log(`\n📝 Starting new session: "${label || prompt.substring(0, 50)}..."`);
+    console.log(`\n📝 Starting new session: "${label || prompt.substring(0, 50)}..."`)
+    if (this.currentProjectPath) {
+      console.log(`📁 Working in: ${this.currentProjectPath}`);
+    }
     
     try {
       // Use CORRECT parameter names based on tests
