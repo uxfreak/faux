@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import fs from 'fs/promises';
+import path from 'path';
 import { getDatabase } from './src/main/database.js';
 import { setupServerIPCHandlers, cleanupAllServers } from './src/main/serverManager.js';
 import { getTerminalManager, cleanupTerminalManager } from './src/main/terminalManager.js';
@@ -411,6 +413,89 @@ function setupIPCHandlers() {
   // Codex MCP management
   codexManager = getCodexManager();
   codexManager.initialize(mainWindow);
+
+  // Codex image handling for attachments
+  ipcMain.handle('codex:saveImage', async (event, { projectPath, imageData, filename, isUrl }) => {
+    try {
+      // Validate sender for security
+      if (!event.senderFrame.url.includes('localhost') && !event.senderFrame.url.startsWith('file://')) {
+        throw new Error('Unauthorized image save request');
+      }
+
+      // Create temp/images directory if it doesn't exist
+      const tempDir = path.join(projectPath, 'temp', 'images');
+      await fs.mkdir(tempDir, { recursive: true });
+
+      let filePath;
+      let thumbnail;
+
+      if (isUrl) {
+        // Download image from URL
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(imageData);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to download image: ${response.statusText}`);
+        }
+
+        const buffer = await response.buffer();
+        const ext = path.extname(filename) || '.png';
+        const timestamp = Date.now();
+        const fileName = `image_${timestamp}${ext}`;
+        filePath = path.join(tempDir, fileName);
+        
+        await fs.writeFile(filePath, buffer);
+        
+        // Create thumbnail (base64, small size)
+        thumbnail = `data:image/${ext.slice(1)};base64,${buffer.toString('base64').slice(0, 4000)}...`;
+      } else {
+        // Save base64 image data
+        const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+        if (!matches) {
+          throw new Error('Invalid image data format');
+        }
+
+        const ext = matches[1];
+        const data = matches[2];
+        const buffer = Buffer.from(data, 'base64');
+        
+        // Validate file size (max 10MB)
+        if (buffer.length > 10 * 1024 * 1024) {
+          throw new Error('Image size exceeds 10MB limit');
+        }
+
+        const timestamp = Date.now();
+        const fileName = filename || `image_${timestamp}.${ext}`;
+        filePath = path.join(tempDir, fileName);
+        
+        await fs.writeFile(filePath, buffer);
+        
+        // Create thumbnail (truncated base64 for preview)
+        thumbnail = `data:image/${ext};base64,${data.slice(0, 4000)}...`;
+      }
+
+      // Clean up old images (older than 24 hours)
+      const files = await fs.readdir(tempDir);
+      const now = Date.now();
+      for (const file of files) {
+        const fileStat = await fs.stat(path.join(tempDir, file));
+        if (now - fileStat.mtimeMs > 24 * 60 * 60 * 1000) {
+          await fs.unlink(path.join(tempDir, file)).catch(() => {});
+        }
+      }
+
+      return {
+        success: true,
+        path: filePath,
+        thumbnail,
+        name: path.basename(filePath),
+        size: (await fs.stat(filePath)).size
+      };
+    } catch (error) {
+      console.error('Error saving image:', error);
+      return { success: false, error: error.message };
+    }
+  });
 
   // Create terminal session
   ipcMain.handle('terminal:create', async (event, options) => {

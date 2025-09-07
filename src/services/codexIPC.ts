@@ -93,6 +93,10 @@ function getIPCService() {
       respondToApproval: (callId: string, decision: string, feedback?: string) =>
         electronAPI.codex.respondToApproval(callId, decision, feedback),
       
+      // Image handling
+      saveImage: (projectPath: string, imageData: string, filename: string, isUrl: boolean) =>
+        electronAPI.codex.saveImage(projectPath, imageData, filename, isUrl),
+      
       // Event listeners - use the specific codex event handlers
       on: (channel: string, callback: Function) => {
         switch (channel) {
@@ -145,6 +149,7 @@ function getIPCService() {
       getAllSessions: () => Promise.resolve([]),
       closeSession: () => Promise.resolve({ success: true }),
       respondToApproval: () => Promise.resolve({ success: false }),
+      saveImage: () => Promise.resolve({ success: false, error: 'Codex not available in web environment' }),
       on: () => () => {}, // Return empty unsubscribe function
       off: () => {}
     };
@@ -303,6 +308,30 @@ export class CodexIPCService {
     try {
       await this.ipc.respondToApproval(callId, decision, feedback);
       return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Save image for attachment to Codex prompt
+   */
+  async saveImage(
+    projectPath: string,
+    imageData: string,
+    filename?: string,
+    isUrl: boolean = false
+  ): Promise<{
+    success: boolean;
+    path?: string;
+    thumbnail?: string;
+    name?: string;
+    size?: number;
+    error?: string;
+  }> {
+    try {
+      const result = await this.ipc.saveImage(projectPath, imageData, filename, isUrl);
+      return result;
     } catch (error: any) {
       return { success: false, error: error.message };
     }

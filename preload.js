@@ -160,7 +160,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeSession: (sessionId) => ipcRenderer.invoke('codex:closeSession', sessionId),
     
     // Approval handling
-    respondToApproval: (callId, decision, feedback) => ipcRenderer.invoke('codex:respondToApproval', callId, decision, feedback)
+    respondToApproval: (callId, decision, feedback) => ipcRenderer.invoke('codex:respondToApproval', callId, decision, feedback),
+    
+    // Image handling for attachments
+    saveImage: (projectPath, imageData, filename, isUrl) => ipcRenderer.invoke('codex:saveImage', { projectPath, imageData, filename, isUrl })
   },
 
   // Codex event listeners

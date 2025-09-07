@@ -14,6 +14,14 @@ interface Message {
   isStreaming?: boolean;
 }
 
+interface AttachedImage {
+  id: string;
+  path: string;
+  thumbnail: string;
+  name: string;
+  size: number;
+}
+
 interface CodexChatProps {
   project: Project;
   onClose?: () => void;
@@ -38,8 +46,12 @@ export const CodexChat = ({
   const [isWorking, setIsWorking] = useState(false);
   const [workingMessage, setWorkingMessage] = useState('');
   const [sessionRestored, setSessionRestored] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamingContentRef = useRef<string>('');
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -283,12 +295,21 @@ export const CodexChat = ({
   }, []);
 
   const handleSendMessage = async () => {
-    if (!input.trim() || isLoading || !isConnected) return;
+    if ((!input.trim() && attachedImages.length === 0) || isLoading || !isConnected) return;
+
+    // Build the message content with attached images
+    let messageContent = input;
+    if (attachedImages.length > 0) {
+      messageContent += '\n\nAttached images:';
+      attachedImages.forEach((img, idx) => {
+        messageContent += `\n- Image ${idx + 1}: ${img.path}`;
+      });
+    }
 
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: input, // Show only the text in the UI
       timestamp: new Date()
     };
 
@@ -331,7 +352,7 @@ export const CodexChat = ({
       
       if (!currentSessionId) {
         // Start new conversation with project context
-        const projectPrompt = `Project: ${project.name}\nPath: ${project.path || 'Not specified'}\nDescription: ${project.description || 'No description'}\n\nUser request: ${input}`;
+        const projectPrompt = `Project: ${project.name}\nPath: ${project.path || 'Not specified'}\nDescription: ${project.description || 'No description'}\n\nUser request: ${messageContent}`;
         
         response = await codexIPCService.startConversation(projectPrompt, {
           model: 'gpt-5',
@@ -349,8 +370,11 @@ export const CodexChat = ({
         }
       } else {
         // Continue existing conversation
-        response = await codexIPCService.continueConversation(currentSessionId, input);
+        response = await codexIPCService.continueConversation(currentSessionId, messageContent);
       }
+      
+      // Clear attached images after sending
+      setAttachedImages([]);
       
       if (!response.success && response.error) {
         throw new Error(response.error);
@@ -432,6 +456,147 @@ export const CodexChat = ({
     setCurrentApproval(null);
   };
 
+  // Image handling functions
+  const processImageFile = async (file: File): Promise<AttachedImage | null> => {
+    if (!file.type.startsWith('image/')) {
+      console.error('Not an image file:', file.type);
+      return null;
+    }
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      console.error('Image too large:', file.size);
+      return null;
+    }
+
+    setIsProcessingImage(true);
+    
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Save image via IPC
+      const result = await codexIPCService.saveImage(
+        project.path,
+        base64,
+        file.name,
+        false
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save image');
+      }
+
+      return {
+        id: `img-${Date.now()}-${Math.random()}`,
+        path: result.path!,
+        thumbnail: result.thumbnail!,
+        name: result.name!,
+        size: result.size!
+      };
+    } catch (error) {
+      console.error('Error processing image:', error);
+      return null;
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newImages: AttachedImage[] = [];
+    
+    for (const file of Array.from(files)) {
+      const processedImage = await processImageFile(file);
+      if (processedImage) {
+        newImages.push(processedImage);
+      }
+    }
+
+    if (newImages.length > 0) {
+      setAttachedImages(prev => [...prev, ...newImages]);
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = Array.from(e.clipboardData.items);
+    
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          const processedImage = await processImageFile(file);
+          if (processedImage) {
+            setAttachedImages(prev => [...prev, processedImage]);
+          }
+        }
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only set dragging to false if leaving the entire chat area
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+
+    const newImages: AttachedImage[] = [];
+    
+    for (const file of imageFiles) {
+      const processedImage = await processImageFile(file);
+      if (processedImage) {
+        newImages.push(processedImage);
+      }
+    }
+
+    if (newImages.length > 0) {
+      setAttachedImages(prev => [...prev, ...newImages]);
+    }
+  };
+
+  const removeImage = (id: string) => {
+    setAttachedImages(prev => prev.filter(img => img.id !== id));
+  };
+
+  const clearAllImages = () => {
+    setAttachedImages([]);
+  };
+
   // Loading state
   if (isConnecting) {
     return (
@@ -497,7 +662,44 @@ export const CodexChat = ({
       style={{ backgroundColor: 'var(--color-bg-primary)' }}
       data-component={dataComponent}
       data-project-id={project.id}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
+      {/* Hidden file input for attachment button */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*"
+        onChange={handleFileSelect}
+        style={{ display: 'none' }}
+      />
+
+      {/* Drag overlay */}
+      {isDragging && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)'
+          }}
+        >
+          <div
+            className="border-2 border-dashed rounded-lg p-8 text-center"
+            style={{
+              borderColor: 'var(--color-accent-primary)',
+              backgroundColor: 'var(--color-bg-primary)'
+            }}
+          >
+            <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--color-accent-primary)' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="text-lg font-medium" style={{ color: 'var(--color-text-primary)' }}>Drop images here</p>
+            <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>Images will be attached to your message</p>
+          </div>
+        </div>
+      )}
 
 
       <div 
@@ -735,6 +937,75 @@ export const CodexChat = ({
           borderColor: 'var(--color-border-secondary)'
         }}
       >
+        {/* Attached images preview */}
+        {attachedImages.length > 0 && (
+          <div 
+            className="border-b px-3 py-2"
+            style={{ borderColor: 'var(--color-border-secondary)' }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs flex items-center gap-1" style={{ color: 'var(--color-text-secondary)' }}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                {attachedImages.length} image{attachedImages.length > 1 ? 's' : ''} attached
+              </span>
+              <button
+                onClick={clearAllImages}
+                className="text-xs px-2 py-1 rounded transition-colors"
+                style={{
+                  color: 'var(--color-text-tertiary)',
+                  backgroundColor: 'transparent'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
+                  e.currentTarget.style.color = 'var(--color-error)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-tertiary)';
+                }}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="flex gap-2 overflow-x-auto">
+              {attachedImages.map(img => (
+                <div 
+                  key={img.id} 
+                  className="relative group flex-shrink-0"
+                  style={{ width: '60px', height: '60px' }}
+                >
+                  <img
+                    src={img.thumbnail}
+                    alt={img.name}
+                    className="w-full h-full object-cover rounded"
+                    style={{ border: '1px solid var(--color-border-primary)' }}
+                  />
+                  <button
+                    onClick={() => removeImage(img.id)}
+                    className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{
+                      backgroundColor: 'var(--color-error)',
+                      color: 'white'
+                    }}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  <div 
+                    className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black bg-opacity-50 text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity rounded-b"
+                    title={img.name}
+                  >
+                    {img.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
         <div className="p-3">
           <div className="flex items-center gap-2">
             <textarea
@@ -742,8 +1013,9 @@ export const CodexChat = ({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="Ask about your project or request changes..."
-              disabled={isLoading || !isConnected}
+              disabled={isLoading || !isConnected || isProcessingImage}
               rows={1}
               className="flex-1 resize-none px-3 py-2 focus:outline-none transition-all text-sm"
               style={{
@@ -756,25 +1028,77 @@ export const CodexChat = ({
                 maxHeight: '100px'
               }}
             />
+            {/* Attachment button */}
             <button
-              onClick={handleSendMessage}
-              disabled={isLoading || !input.trim() || !isConnected}
-              className="p-2 transition-all flex items-center justify-center"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || !isConnected || isProcessingImage}
+              className="p-2 transition-all flex items-center justify-center relative"
               style={{
                 backgroundColor: 'transparent',
-                color: isLoading || !input.trim() || !isConnected
-                  ? 'var(--color-text-tertiary)'
-                  : 'var(--color-text-secondary)',
-                cursor: isLoading || !input.trim() || !isConnected ? 'not-allowed' : 'pointer',
-                opacity: isLoading || !input.trim() || !isConnected ? 0.3 : 1
+                color: attachedImages.length > 0 
+                  ? 'var(--color-accent-primary)'
+                  : (isLoading || !isConnected || isProcessingImage)
+                    ? 'var(--color-text-tertiary)'
+                    : 'var(--color-text-secondary)',
+                cursor: (isLoading || !isConnected || isProcessingImage) ? 'not-allowed' : 'pointer',
+                opacity: (isLoading || !isConnected || isProcessingImage) ? 0.3 : 1
               }}
               onMouseEnter={(e) => {
-                if (!isLoading && input.trim() && isConnected) {
+                if (!isLoading && isConnected && !isProcessingImage) {
                   e.currentTarget.style.color = 'var(--color-accent-primary)';
                 }
               }}
               onMouseLeave={(e) => {
-                if (!isLoading && input.trim() && isConnected) {
+                if (!isLoading && isConnected && !isProcessingImage && attachedImages.length === 0) {
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }
+              }}
+              title="Attach images"
+            >
+              {isProcessingImage ? (
+                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  {attachedImages.length > 0 && (
+                    <span 
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center"
+                      style={{
+                        backgroundColor: 'var(--color-accent-primary)',
+                        color: 'white',
+                        fontSize: '10px'
+                      }}
+                    >
+                      {attachedImages.length}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+            {/* Send button */}
+            <button
+              onClick={handleSendMessage}
+              disabled={isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected}
+              className="p-2 transition-all flex items-center justify-center"
+              style={{
+                backgroundColor: 'transparent',
+                color: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected
+                  ? 'var(--color-text-tertiary)'
+                  : 'var(--color-text-secondary)',
+                cursor: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 'not-allowed' : 'pointer',
+                opacity: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 0.3 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && (input.trim() || attachedImages.length > 0) && isConnected) {
+                  e.currentTarget.style.color = 'var(--color-accent-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading && (input.trim() || attachedImages.length > 0) && isConnected) {
                   e.currentTarget.style.color = 'var(--color-text-secondary)';
                 }
               }}
