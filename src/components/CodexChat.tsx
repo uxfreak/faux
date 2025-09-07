@@ -531,6 +531,13 @@ Remember: You're a prototyping partner who makes things happen while speaking th
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedImages.length === 0) || isLoading || !isConnected) return;
 
+    // Deactivate inspector if it's active
+    if (isInspecting) {
+      console.log('🔍 Deactivating inspector before sending message');
+      domInspectorService.deactivate();
+      setIsInspecting(false);
+    }
+
     // Build the message content with attachments (images and DOM elements)
     let messageContent = input;
     const currentAttachedImages = [...attachedImages]; // Copy current attachments

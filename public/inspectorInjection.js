@@ -16,6 +16,7 @@
   class DOMInspector {
     constructor() {
       this.isActive = false;
+      this.hasSelection = false;  // True after clicking an element
       this.currentElement = null;
       this.hoveredElement = null;
       this.overlay = null;
@@ -164,7 +165,7 @@
      * Handle mouse move for hover effect
      */
     handleMouseMove(event) {
-      if (!this.isActive) return;
+      if (!this.isActive || this.hasSelection) return;  // Don't hover after selection
 
       const element = document.elementFromPoint(event.clientX, event.clientY);
       if (element && element !== this.hoveredElement) {
@@ -204,7 +205,8 @@
 
       switch (event.key) {
         case 'Escape':
-          this.deactivate();
+          // Don't deactivate here - let parent handle it
+          event.preventDefault();
           break;
         case 'ArrowUp':
           event.preventDefault();
@@ -255,6 +257,7 @@
 
       if (newElement) {
         this.currentElement = newElement;
+        this.hoveredElement = newElement;
         this.highlightElement(newElement);
         
         // Scroll into view if needed
@@ -263,6 +266,9 @@
           block: 'nearest', 
           inline: 'nearest' 
         });
+        
+        // Don't capture screenshot on navigation - wait for Enter key
+        console.log('🔍 Navigated to:', newElement.tagName, '- Press Enter to select');
       }
     }
 
@@ -315,6 +321,7 @@
      */
     selectElement(element) {
       this.currentElement = element;
+      this.hasSelection = true;  // Mark that we have a selection
 
       // Change overlay color to indicate selection
       this.overlay.style.borderColor = this.config.selectedColor;
@@ -325,6 +332,8 @@
       
       // Send to parent
       this.sendToParent('ELEMENT_SELECTED', elementData);
+      
+      console.log('✅ Element selected - hover disabled, use arrow keys to navigate');
 
       // Extract React info if available
       const reactInfo = this.extractReactInfo(element);
