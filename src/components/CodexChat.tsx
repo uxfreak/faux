@@ -889,11 +889,11 @@ Remember: You're a prototyping partner who makes things happen while speaking th
       >
         <div className="text-center p-8">
           <div className="mb-4">
-            <svg className="w-12 h-12 mx-auto text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--color-action-danger)' }}>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-red-600 mb-2">AI Assistant Unavailable</h3>
+          <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--color-action-danger)' }}>AI Assistant Unavailable</h3>
           <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
             {error}
           </p>
@@ -944,7 +944,7 @@ Remember: You're a prototyping partner who makes things happen while speaking th
         <div
           className="absolute inset-0 z-50 flex items-center justify-center"
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backgroundColor: 'var(--color-bg-overlay)',
             backdropFilter: 'blur(4px)'
           }}
         >
@@ -979,8 +979,8 @@ Remember: You're a prototyping partner who makes things happen while speaking th
             exit={{ opacity: 0, y: -20 }}
             className="absolute top-2 left-4 right-4 px-3 py-2 rounded-lg text-xs flex items-center gap-2"
             style={{
-              backgroundColor: 'var(--color-success)',
-              color: 'white',
+              backgroundColor: 'var(--color-action-primary)',
+              color: 'var(--color-bg-primary)',
               zIndex: 10,
               boxShadow: 'var(--shadow-md)'
             }}
@@ -1065,17 +1065,16 @@ Remember: You're a prototyping partner who makes things happen while speaking th
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} flex-1`}
             >
               <div
-                className={`max-w-[75%] rounded-lg text-sm`}
+                className={`flex flex-col rounded-lg text-sm`}
                 style={{
+                  maxWidth: '75%',
                   backgroundColor: message.role === 'user' 
-                    ? 'var(--color-accent-primary)'
-                    : 'var(--color-surface-primary)',
-                  color: message.role === 'user'
-                    ? 'white'
-                    : 'var(--color-text-primary)',
+                    ? 'var(--color-bg-secondary)'
+                    : 'var(--color-bg-secondary)',
+                  color: 'var(--color-text-primary)',
                   border: message.role === 'assistant' 
                     ? '1px solid var(--color-border-primary)'
                     : 'none'
@@ -1219,10 +1218,8 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                   <div
                     className="text-xs mt-1 px-3 pb-2"
                     style={{
-                      color: message.role === 'user' 
-                        ? 'rgba(255,255,255,0.6)'
-                        : 'var(--color-text-tertiary)',
-                      opacity: 0.5
+                      color: 'var(--color-text-tertiary)',
+                      opacity: 0.7
                     }}
                   >
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1410,7 +1407,11 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                     </svg>
                   </button>
                   <div 
-                    className="absolute bottom-0 left-0 right-0 px-1 py-0.5 bg-black bg-opacity-50 text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity rounded-b"
+                    className="absolute bottom-0 left-0 right-0 px-1 py-0.5 text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity rounded-b"
+                    style={{
+                      backgroundColor: 'var(--color-bg-overlay)',
+                      color: 'var(--color-text-primary)'
+                    }}
                     title={img.name}
                   >
                     {img.name}
@@ -1491,8 +1492,8 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                     <span 
                       className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center"
                       style={{
-                        backgroundColor: 'var(--color-accent-primary)',
-                        color: 'white',
+                        backgroundColor: 'var(--color-action-primary)',
+                        color: 'var(--color-bg-primary)',
                         fontSize: '10px'
                       }}
                     >

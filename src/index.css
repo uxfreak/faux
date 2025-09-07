@@ -1,6 +1,13 @@
 @import './styles/tokens.css';
 @import "tailwindcss";
 
+/* Placeholder styling for better contrast */
+textarea::placeholder,
+input::placeholder {
+  color: var(--color-text-tertiary);
+  opacity: 1;
+}
+
 /* Shimmer animation for working indicator */
 @keyframes shimmer {
   0% { background-position: 200% center; }
