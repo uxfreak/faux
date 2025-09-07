@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Project } from '../types/Project';
 import { codexIPCService, CodexApprovalRequest } from '../services/codexIPC';
 import { CodexApprovalDialog } from './CodexApprovalDialog';
+import { audioService } from '../services/audioService';
 
 interface LoopState {
   id: string;
@@ -66,6 +67,9 @@ export const CodexChat = ({
     isStreaming: false,
     phase: 'idle'
   });
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const previousPhaseRef = useRef<string>('idle');
   const usedThinkingVariants = useRef<Set<string>>(new Set());
   const usedExecutingVariants = useRef<Set<string>>(new Set());
@@ -806,6 +810,84 @@ Remember: You're a prototyping partner who makes things happen while speaking th
     }
   };
 
+  // Audio recording handlers
+  const startRecording = async () => {
+    try {
+      await audioService.startRecording();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      
+      // Update duration every second
+      const interval = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      
+      // Store interval ID for cleanup
+      (window as any).recordingInterval = interval;
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      setError('Failed to start recording. Please check microphone permissions.');
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      // Clear duration interval
+      if ((window as any).recordingInterval) {
+        clearInterval((window as any).recordingInterval);
+        delete (window as any).recordingInterval;
+      }
+      
+      setIsRecording(false);
+      setIsTranscribing(true);
+      
+      const audioBlob = await audioService.stopRecording();
+      
+      // Transcribe the audio
+      const transcription = await audioService.transcribeAudio(audioBlob);
+      
+      // Add transcribed text to input
+      setInput(prev => {
+        const newText = prev ? `${prev} ${transcription}` : transcription;
+        return newText;
+      });
+      
+      // Focus input after transcription
+      setTimeout(() => {
+        inputRef.current?.focus();
+        // Move cursor to end
+        if (inputRef.current) {
+          inputRef.current.setSelectionRange(inputRef.current.value.length, inputRef.current.value.length);
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error('Failed to transcribe audio:', error);
+      setError('Failed to transcribe audio. Please try again.');
+    } finally {
+      setIsTranscribing(false);
+      setRecordingDuration(0);
+    }
+  };
+
+  const cancelRecording = () => {
+    // Clear duration interval
+    if ((window as any).recordingInterval) {
+      clearInterval((window as any).recordingInterval);
+      delete (window as any).recordingInterval;
+    }
+    
+    audioService.cancelRecording();
+    setIsRecording(false);
+    setRecordingDuration(0);
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1501,6 +1583,63 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                     </span>
                   )}
                 </>
+              )}
+            </button>
+            {/* Microphone button */}
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isLoading || !isConnected || isTranscribing}
+              className="p-2 transition-all flex items-center justify-center relative"
+              style={{
+                backgroundColor: 'transparent',
+                color: isRecording 
+                  ? 'var(--color-action-danger)'
+                  : isTranscribing
+                    ? 'var(--color-text-tertiary)'
+                    : (isLoading || !isConnected)
+                      ? 'var(--color-text-tertiary)'
+                      : 'var(--color-text-secondary)',
+                cursor: (isLoading || !isConnected || isTranscribing) ? 'not-allowed' : 'pointer',
+                opacity: (isLoading || !isConnected || isTranscribing) ? 0.3 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && isConnected && !isTranscribing && !isRecording) {
+                  e.currentTarget.style.color = 'var(--color-accent-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading && isConnected && !isTranscribing && !isRecording) {
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }
+              }}
+              title={isRecording ? "Stop recording" : "Start voice input"}
+            >
+              {isTranscribing ? (
+                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : isRecording ? (
+                <>
+                  <svg className="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 14a4 4 0 01-4-4V6a4 4 0 118 0v4a4 4 0 01-4 4z" />
+                    <path d="M16 10v1a4 4 0 01-8 0v-1M12 14v4m-2 2h4" />
+                  </svg>
+                  <span 
+                    className="absolute -top-1 -right-1 px-1 rounded text-xs"
+                    style={{
+                      backgroundColor: 'var(--color-action-danger)',
+                      color: 'var(--color-bg-primary)',
+                      fontSize: '10px',
+                      minWidth: '24px'
+                    }}
+                  >
+                    {formatDuration(recordingDuration)}
+                  </span>
+                </>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
               )}
             </button>
             {/* Send button */}
