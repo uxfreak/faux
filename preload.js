@@ -89,6 +89,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('project:duplicate-complete');
   },
 
+  // DOM Inspector API
+  inspector: {
+    inject: (frameUrl) => ipcRenderer.invoke('inspector:inject', frameUrl),
+    captureElement: (rect, projectPath) => ipcRenderer.invoke('inspector:captureElement', { ...rect, projectPath }),
+    onElementSelected: (callback) => {
+      ipcRenderer.on('inspector:element-selected', (event, data) => callback(data));
+      return () => ipcRenderer.removeAllListeners('inspector:element-selected');
+    },
+    onInspectorReady: (callback) => {
+      ipcRenderer.on('inspector:ready', (event, data) => callback(data));
+      return () => ipcRenderer.removeAllListeners('inspector:ready');
+    }
+  },
+
   // Thumbnail API
   thumbnail: {
     capture: (projectId, serverUrl, options) => ipcRenderer.invoke('thumbnail:capture', { projectId, serverUrl, options }),

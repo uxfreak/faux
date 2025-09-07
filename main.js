@@ -517,6 +517,81 @@ function setupIPCHandlers() {
     }
   });
 
+  // DOM Inspector IPC Handlers
+  ipcMain.handle('inspector:inject', async (event, frameUrl) => {
+    try {
+      const webContents = event.sender;
+      
+      // Find the frame with the matching URL
+      const frames = webContents.mainFrame.framesInSubtree;
+      const targetFrame = frames.find(frame => frame.url === frameUrl);
+      
+      if (targetFrame) {
+        // Read the injection script
+        const scriptPath = isDev 
+          ? join(__dirname, 'public', 'inspectorInjection.js')
+          : join(__dirname, 'inspectorInjection.js');
+        const scriptContent = await fs.readFile(scriptPath, 'utf-8');
+        
+        // Execute in the target frame
+        await targetFrame.executeJavaScript(scriptContent);
+        return { success: true };
+      } else {
+        throw new Error('Frame not found');
+      }
+    } catch (error) {
+      console.error('Error injecting inspector script:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('inspector:captureElement', async (event, { x, y, width, height, projectPath }) => {
+    try {
+      const webContents = event.sender;
+      
+      // Capture the specific area
+      const image = await webContents.capturePage({
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height)
+      });
+      
+      // Convert to PNG buffer
+      const buffer = image.toPNG();
+      
+      // Create temp/images directory if it doesn't exist
+      const tempDir = path.join(projectPath, 'temp', 'images');
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      // Generate unique filename
+      const timestamp = Date.now();
+      const randomSuffix = Math.random().toString(36).substring(2, 8);
+      const fileName = `element_${timestamp}_${randomSuffix}.png`;
+      const filePath = path.join(tempDir, fileName);
+      
+      // Save the image
+      await fs.writeFile(filePath, buffer);
+      
+      // Create thumbnail (base64 for preview)
+      const thumbnail = `data:image/png;base64,${buffer.toString('base64')}`;
+      
+      // Get file size
+      const stats = await fs.stat(filePath);
+      
+      return { 
+        success: true, 
+        path: filePath,
+        thumbnail: thumbnail,
+        name: fileName,
+        size: stats.size
+      };
+    } catch (error) {
+      console.error('Error capturing element screenshot:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Create terminal session
   ipcMain.handle('terminal:create', async (event, options) => {
     try {

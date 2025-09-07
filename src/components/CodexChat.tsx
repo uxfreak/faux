@@ -5,7 +5,8 @@ import remarkGfm from 'remark-gfm';
 import { Project } from '../types/Project';
 import { codexIPCService, CodexApprovalRequest } from '../services/codexIPC';
 import { CodexApprovalDialog } from './CodexApprovalDialog';
-import { audioService } from '../services/audioService';
+import audioService from '../services/audioService';
+import domInspectorService from '../services/domInspectorService';
 
 interface LoopState {
   id: string;
@@ -22,7 +23,6 @@ interface Message {
   timestamp: Date;
   isStreaming?: boolean;
   attachedImages?: AttachedImage[]; // Track images in messages
-  steps?: AgentStep[]; // Track agent reasoning phases
 }
 
 interface AttachedImage {
@@ -31,6 +31,8 @@ interface AttachedImage {
   thumbnail: string;
   name: string;
   size: number;
+  type?: 'image' | 'element';
+  elementData?: any;
 }
 
 interface CodexChatProps {
@@ -70,6 +72,8 @@ export const CodexChat = ({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isInspecting, setIsInspecting] = useState(false);
+  // selectedElement removed - now using attachments for DOM elements
   const previousPhaseRef = useRef<string>('idle');
   const usedThinkingVariants = useRef<Set<string>>(new Set());
   const usedExecutingVariants = useRef<Set<string>>(new Set());
@@ -333,8 +337,8 @@ export const CodexChat = ({
     });
 
     const unsubscribeComplete = codexIPCService.onMessageComplete((data) => {
-      if (isMounted && data.isFinal) {
-        console.log('📡 Final message complete:', data);
+      if (isMounted) {
+        console.log('📡 Message complete:', data);
         
         // Clear any pending timeout
         if (messageTimeoutRef.current) {
@@ -345,8 +349,8 @@ export const CodexChat = ({
         // Get the final content
         const finalContent = streamingContentRef.current || data.content || 'No response received';
         
-        // If this is the final task_complete message, add to permanent messages
-        if (data.isFinal) {
+        // Add to permanent messages
+        if (finalContent) {
           // Create the final assistant message
           const assistantMessage: Message = {
             id: `msg-${Date.now()}`,
@@ -527,16 +531,31 @@ Remember: You're a prototyping partner who makes things happen while speaking th
   const handleSendMessage = async () => {
     if ((!input.trim() && attachedImages.length === 0) || isLoading || !isConnected) return;
 
-    // Build the message content with attached images
+    // Build the message content with attachments (images and DOM elements)
     let messageContent = input;
     const currentAttachedImages = [...attachedImages]; // Copy current attachments
     
     if (currentAttachedImages.length > 0) {
-      messageContent += '\n\nAttached images:';
+      const attachmentTexts: string[] = [];
+      
       currentAttachedImages.forEach((img, idx) => {
-        messageContent += `\n- Image ${idx + 1}: ${img.path}`;
+        const isElement = img.type === 'element';
+        if (isElement) {
+          const elementData = img.elementData;
+          const elementText = domInspectorService.formatForLLM(elementData);
+          attachmentTexts.push(`\n[DOM Element Context]\n${elementText}\n[Element Screenshot: ${img.path}]`);
+        } else {
+          attachmentTexts.push(`Image ${idx + 1}: ${img.path}`);
+        }
       });
-      console.log('📎 Images attached to prompt:', currentAttachedImages.map(img => img.path));
+      
+      if (attachmentTexts.length > 0) {
+        messageContent += '\n\n' + attachmentTexts.join('\n');
+      }
+      
+      console.log('📎 Attachments in prompt:', currentAttachedImages.map(img => 
+        img.type === 'element' ? `Element: ${img.path}` : img.path
+      ));
     }
 
     const userMessage: Message = {
@@ -892,6 +911,115 @@ Remember: You're a prototyping partner who makes things happen while speaking th
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // DOM Inspector handlers
+  const toggleInspector = async () => {
+    if (isInspecting) {
+      domInspectorService.deactivate();
+      setIsInspecting(false);
+      // Clear any DOM element attachments
+      setAttachedImages(prev => prev.filter(img => !img.type || img.type !== 'element'));
+    } else {
+      // Find the iframe element
+      const iframe = document.querySelector('iframe[title*="Vite Dev Server"]') as HTMLIFrameElement;
+      if (iframe) {
+        // Set current project for screenshot capture
+        (window as any).currentProject = project;
+        
+        await domInspectorService.activate(iframe);
+        setIsInspecting(true);
+        
+        // Listen for element selection
+        domInspectorService.on('elementSelected', handleElementSelected);
+      } else {
+        setError('Preview must be running to use inspector');
+      }
+    }
+  };
+
+  const handleElementSelected = (elementData: any) => {
+    console.log('🎯 Element selected:', elementData);
+    
+    // Store element with screenshot as an attachment
+    if (elementData && elementData.screenshot) {
+      console.log('📸 Screenshot available:', elementData.screenshot);
+      
+      const elementAttachment: AttachedImage = {
+        id: `element-${Date.now()}-${Math.random()}`,
+        path: elementData.screenshot.path,
+        thumbnail: elementData.screenshot.thumbnail,
+        name: `Element: ${elementData.element?.tagName || 'Unknown'}`,
+        size: elementData.screenshot.size,
+        type: 'element',
+        elementData: elementData
+      };
+      
+      // Replace any existing element selection
+      setAttachedImages(prev => {
+        const filtered = prev.filter(img => !img.type || img.type !== 'element');
+        return [...filtered, elementAttachment];
+      });
+      
+      // Store current project for context
+      (window as any).currentProject = project;
+    } else {
+      console.warn('⚠️ No screenshot in element data:', elementData);
+      
+      // Still show the element even without screenshot for debugging
+      if (elementData) {
+        const elementAttachment: AttachedImage = {
+          id: `element-${Date.now()}-${Math.random()}`,
+          path: '',
+          thumbnail: 'data:image/svg+xml;base64,' + btoa(`
+            <svg width="60" height="60" xmlns="http://www.w3.org/2000/svg">
+              <rect width="60" height="60" fill="#374151"/>
+              <text x="30" y="35" text-anchor="middle" fill="#9CA3AF" font-size="12">
+                ${elementData.element?.tagName || '?'}
+              </text>
+            </svg>
+          `),
+          name: `Element: ${elementData.element?.tagName || 'Unknown'}`,
+          size: 0,
+          type: 'element',
+          elementData: elementData
+        };
+        
+        setAttachedImages(prev => {
+          const filtered = prev.filter(img => !img.type || img.type !== 'element');
+          return [...filtered, elementAttachment];
+        });
+      }
+    }
+    
+    // Keep inspector active for further selections
+    // User can press Escape or click selector icon to deactivate
+  };
+
+  // Remove insertElementContext - no longer needed
+
+  // Cleanup inspector on unmount and handle Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isInspecting) {
+        domInspectorService.deactivate();
+        setIsInspecting(false);
+        // Clear any DOM element attachments on Escape
+        setAttachedImages(prev => prev.filter(img => !img.type || img.type !== 'element'));
+      }
+    };
+    
+    if (isInspecting) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      domInspectorService.off('elementSelected', handleElementSelected);
+      if (isInspecting) {
+        domInspectorService.deactivate();
+      }
+    };
+  }, [isInspecting]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -1261,7 +1389,8 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                         ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
                         ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
                         li: ({ children }) => <li className="mb-1">{children}</li>,
-                        code: ({ inline, className, children, ...props }) => {
+                        code: ({ className, children, ...props }: any) => {
+                          const inline = !className;
                           const codeString = String(children).replace(/\n$/, '');
                           const isReallyInline = inline !== false && !codeString.includes('\n') && codeString.length < 80;
                           
@@ -1351,9 +1480,10 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                       ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
                       ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
                       li: ({ children }) => <li className="mb-1">{children}</li>,
-                      code: ({ inline, className, children, ...props }) => {
+                      code: ({ className, children, ...props }) => {
                         const codeString = String(children).replace(/\n$/, '');
-                        const isReallyInline = inline !== false && !codeString.includes('\n') && codeString.length < 80;
+                        const inline = !className?.includes('language-');
+                        const isReallyInline = inline && !codeString.includes('\n') && codeString.length < 80;
                         
                         return isReallyInline ? (
                           <code 
@@ -1440,7 +1570,10 @@ Remember: You're a prototyping partner who makes things happen while speaking th
               </button>
             </div>
             <div className="flex gap-2 overflow-x-auto">
-              {attachedImages.map(img => (
+              {attachedImages.map(img => {
+                const isElement = img.type === 'element';
+                const elementData = img.elementData;
+                return (
                 <div 
                   key={img.id} 
                   className="relative group flex-shrink-0 overflow-visible"
@@ -1499,15 +1632,31 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                       backgroundColor: 'var(--color-bg-overlay)',
                       color: 'var(--color-text-primary)'
                     }}
-                    title={img.name}
+                    title={isElement ? 
+                      `${elementData?.element?.tagName}${elementData?.element?.id ? '#' + elementData.element.id : ''}${elementData?.element?.className ? '.' + elementData.element.className.split(' ')[0] : ''}` : 
+                      img.name
+                    }
                   >
-                    {img.name}
+                    {isElement ? (
+                      <div className="flex items-center gap-1">
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                        <span className="truncate">
+                          {elementData?.element?.tagName}
+                          {elementData?.component?.name && ` (${elementData.component.name})`}
+                        </span>
+                      </div>
+                    ) : img.name}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
+
+        {/* Selected element is now shown as attachment - removed separate display */}
         
         <div className="p-3">
           <div className="flex items-center gap-1">
@@ -1588,6 +1737,47 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                     </span>
                   )}
                 </>
+              )}
+            </button>
+            {/* Inspector button */}
+            <button
+              onClick={toggleInspector}
+              disabled={isLoading || !isConnected}
+              className="p-2 transition-all flex items-center justify-center relative"
+              style={{
+                backgroundColor: isInspecting ? 'var(--color-action-primary)' : 'transparent',
+                color: isInspecting 
+                  ? 'var(--color-bg-primary)'
+                  : (isLoading || !isConnected)
+                    ? 'var(--color-text-tertiary)'
+                    : 'var(--color-text-secondary)',
+                cursor: (isLoading || !isConnected) ? 'not-allowed' : 'pointer',
+                opacity: (isLoading || !isConnected) ? 0.3 : 1,
+                borderRadius: '4px'
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading && isConnected && !isInspecting) {
+                  e.currentTarget.style.color = 'var(--color-text-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading && isConnected && !isInspecting) {
+                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                }
+              }}
+              title={isInspecting ? "Exit inspector mode (Esc)" : "Inspect element (Cmd+Shift+I)"}
+            >
+              {isInspecting ? (
+                <div className="relative">
+                  <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v.01M17.66 6.34l-.01.01M20 12h-.01M17.66 17.66l-.01.01M12 20v-.01M6.34 17.66l.01.01M4 12h.01M6.34 6.34l.01.01" />
+                  </svg>
+                </div>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
               )}
             </button>
             {/* Microphone button */}
