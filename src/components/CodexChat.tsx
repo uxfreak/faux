@@ -1666,15 +1666,16 @@ Remember: You're a prototyping partner who makes things happen while speaking th
         {/* Selected element is now shown as attachment - removed separate display */}
         
         <div className="p-3">
-          <div className="flex items-center gap-1">
+          {/* Top row: Input and mic */}
+          <div className="flex items-center gap-2 mb-2">
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                // Auto-resize textarea with proper min height
+                // Auto-resize textarea
                 const target = e.target;
-                target.style.height = '36px'; // Reset to min height first
+                target.style.height = '36px';
                 const scrollHeight = target.scrollHeight;
                 target.style.height = Math.min(scrollHeight, 120) + 'px';
               }}
@@ -1683,10 +1684,10 @@ Remember: You're a prototyping partner who makes things happen while speaking th
               placeholder="Ask about your project..."
               disabled={isLoading || !isConnected || isProcessingImage}
               rows={1}
-              className="flex-1 resize-none px-3 py-2 focus:outline-none transition-all text-sm"
+              className="flex-1 resize-none px-3 py-2 focus:outline-none transition-all text-sm rounded"
               style={{
-                backgroundColor: 'transparent',
-                border: 'none',
+                backgroundColor: 'var(--color-bg-secondary)',
+                border: '1px solid transparent',
                 color: 'var(--color-text-primary)',
                 opacity: isLoading || !isConnected ? 0.5 : 1,
                 cursor: isLoading || !isConnected ? 'not-allowed' : 'text',
@@ -1695,114 +1696,20 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 overflow: 'auto'
               }}
             />
-            {/* Attachment button */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isLoading || !isConnected || isProcessingImage}
-              className="p-2 transition-all flex items-center justify-center relative"
-              style={{
-                backgroundColor: 'transparent',
-                color: attachedImages.length > 0 
-                  ? 'var(--color-accent-primary)'
-                  : (isLoading || !isConnected || isProcessingImage)
-                    ? 'var(--color-text-tertiary)'
-                    : 'var(--color-text-secondary)',
-                cursor: (isLoading || !isConnected || isProcessingImage) ? 'not-allowed' : 'pointer',
-                opacity: (isLoading || !isConnected || isProcessingImage) ? 0.3 : 1
-              }}
-              onMouseEnter={(e) => {
-                if (!isLoading && isConnected && !isProcessingImage) {
-                  e.currentTarget.style.color = 'var(--color-accent-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isLoading && isConnected && !isProcessingImage && attachedImages.length === 0) {
-                  e.currentTarget.style.color = 'var(--color-text-secondary)';
-                }
-              }}
-              title="Attach images"
-            >
-              {isProcessingImage ? (
-                <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  {attachedImages.length > 0 && (
-                    <span 
-                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-xs flex items-center justify-center"
-                      style={{
-                        backgroundColor: 'var(--color-action-primary)',
-                        color: 'var(--color-bg-primary)',
-                        fontSize: '10px'
-                      }}
-                    >
-                      {attachedImages.length}
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
-            {/* Inspector button */}
-            <button
-              onClick={toggleInspector}
-              disabled={isLoading || !isConnected}
-              className="p-2 transition-all flex items-center justify-center relative"
-              style={{
-                backgroundColor: isInspecting ? 'var(--color-action-primary)' : 'transparent',
-                color: isInspecting 
-                  ? 'var(--color-bg-primary)'
-                  : (isLoading || !isConnected)
-                    ? 'var(--color-text-tertiary)'
-                    : 'var(--color-text-secondary)',
-                cursor: (isLoading || !isConnected) ? 'not-allowed' : 'pointer',
-                opacity: (isLoading || !isConnected) ? 0.3 : 1,
-                borderRadius: '4px'
-              }}
-              onMouseEnter={(e) => {
-                if (!isLoading && isConnected && !isInspecting) {
-                  e.currentTarget.style.color = 'var(--color-text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isLoading && isConnected && !isInspecting) {
-                  e.currentTarget.style.color = 'var(--color-text-secondary)';
-                }
-              }}
-              title={isInspecting ? "Exit inspector mode (Esc)" : "Inspect element (Cmd+Shift+I)"}
-            >
-              {isInspecting ? (
-                <div className="relative">
-                  <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v.01M17.66 6.34l-.01.01M20 12h-.01M17.66 17.66l-.01.01M12 20v-.01M6.34 17.66l.01.01M4 12h.01M6.34 6.34l.01.01" />
-                  </svg>
-                </div>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-              )}
-            </button>
             {/* Microphone button */}
             <button
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isLoading || !isConnected || isTranscribing}
-              className="p-2 transition-all flex items-center justify-center relative"
+              className="p-2 transition-all flex items-center justify-center rounded relative"
               style={{
-                backgroundColor: 'transparent',
+                backgroundColor: isRecording ? 'var(--color-action-danger)' : 'transparent',
                 color: isRecording 
-                  ? 'var(--color-action-danger)'
+                  ? 'white'
                   : isTranscribing
-                    ? 'var(--color-text-secondary)'
-                    : (isLoading || !isConnected)
-                      ? 'var(--color-text-tertiary)'
-                      : 'var(--color-text-secondary)',
+                    ? 'var(--color-accent-primary)'
+                    : 'var(--color-text-secondary)',
                 cursor: (isLoading || !isConnected || isTranscribing) ? 'not-allowed' : 'pointer',
-                opacity: (isLoading || !isConnected || isTranscribing) ? 0.3 : 1
+                opacity: (isLoading || !isConnected || isTranscribing) ? 0.5 : 1
               }}
               onMouseEnter={(e) => {
                 if (!isLoading && isConnected && !isTranscribing && !isRecording) {
@@ -1810,7 +1717,7 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 }
               }}
               onMouseLeave={(e) => {
-                if (!isLoading && isConnected && !isTranscribing && !isRecording) {
+                if (!isRecording && !isTranscribing) {
                   e.currentTarget.style.color = 'var(--color-text-secondary)';
                 }
               }}
@@ -1822,24 +1729,25 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 </svg>
               ) : isRecording ? (
                 <>
-                  <div className="audio-wave" style={{ color: 'var(--color-action-danger)' }}>
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                    <span></span>
+                  <div className="audio-wave" style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+                    <span style={{ width: '2px', height: '12px', backgroundColor: 'currentColor', animation: 'wave 0.6s ease-in-out infinite' }}></span>
+                    <span style={{ width: '2px', height: '8px', backgroundColor: 'currentColor', animation: 'wave 0.6s ease-in-out 0.15s infinite' }}></span>
+                    <span style={{ width: '2px', height: '14px', backgroundColor: 'currentColor', animation: 'wave 0.6s ease-in-out 0.3s infinite' }}></span>
+                    <span style={{ width: '2px', height: '10px', backgroundColor: 'currentColor', animation: 'wave 0.6s ease-in-out 0.45s infinite' }}></span>
                   </div>
-                  <span 
-                    className="absolute -top-1 -right-1 px-1 rounded text-xs"
-                    style={{
-                      backgroundColor: 'var(--color-action-danger)',
-                      color: 'var(--color-bg-primary)',
-                      fontSize: '10px',
-                      minWidth: '24px'
-                    }}
-                  >
-                    {formatDuration(recordingDuration)}
-                  </span>
+                  {recordingDuration > 0 && (
+                    <span 
+                      className="absolute -top-1 -right-1 px-1 rounded text-xs"
+                      style={{
+                        backgroundColor: 'var(--color-action-danger)',
+                        color: 'white',
+                        fontSize: '9px',
+                        minWidth: '20px'
+                      }}
+                    >
+                      {formatDuration(recordingDuration)}
+                    </span>
+                  )}
                 </>
               ) : (
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1847,27 +1755,103 @@ Remember: You're a prototyping partner who makes things happen while speaking th
                 </svg>
               )}
             </button>
+          </div>
+          
+          {/* Bottom row: Attachment, Inspector, and Send buttons */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {/* Attachment button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || !isConnected || isProcessingImage}
+                className="transition-all flex items-center justify-center"
+                style={{
+                  backgroundColor: 'transparent',
+                  color: attachedImages.length > 0 
+                    ? 'var(--color-accent-primary)'
+                    : 'var(--color-text-secondary)',
+                  cursor: (isLoading || !isConnected || isProcessingImage) ? 'not-allowed' : 'pointer',
+                  opacity: (isLoading || !isConnected || isProcessingImage) ? 0.3 : 1,
+                  padding: '0',
+                  border: 'none'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoading && isConnected && !isProcessingImage) {
+                    e.currentTarget.style.color = 'var(--color-text-primary)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = attachedImages.length > 0 
+                    ? 'var(--color-accent-primary)'
+                    : 'var(--color-text-secondary)';
+                }}
+                title="Attach images"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              </button>
+              
+              {/* Inspector button with target icon */}
+              <button
+                onClick={toggleInspector}
+                disabled={isLoading || !isConnected}
+                className="transition-all flex items-center justify-center"
+                style={{
+                  backgroundColor: isInspecting ? 'var(--color-accent-primary)' : 'transparent',
+                  color: isInspecting 
+                    ? 'white'
+                    : 'var(--color-text-secondary)',
+                  cursor: (isLoading || !isConnected) ? 'not-allowed' : 'pointer',
+                  opacity: (isLoading || !isConnected) ? 0.3 : 1,
+                  borderRadius: isInspecting ? '4px' : '0',
+                  padding: isInspecting ? '2px' : '0',
+                  border: 'none'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isLoading && isConnected && !isInspecting) {
+                    e.currentTarget.style.color = 'var(--color-text-primary)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isInspecting) {
+                    e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  }
+                }}
+                title={isInspecting ? "Exit inspector" : "Inspect element"}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="6" />
+                  <circle cx="12" cy="12" r="2" />
+                </svg>
+              </button>
+            </div>
+            
             {/* Send button */}
             <button
               onClick={handleSendMessage}
               disabled={isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected}
               className="p-2 transition-all flex items-center justify-center"
               style={{
-                backgroundColor: 'transparent',
-                color: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected
+                backgroundColor: (isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected)
+                  ? 'transparent'
+                  : 'var(--color-accent-primary)',
+                color: (isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected)
                   ? 'var(--color-text-tertiary)'
-                  : 'var(--color-text-secondary)',
+                  : 'white',
                 cursor: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 'not-allowed' : 'pointer',
-                opacity: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 0.5 : 1
+                opacity: isLoading || (!input.trim() && attachedImages.length === 0) || !isConnected ? 0.5 : 1,
+                borderRadius: '4px'
               }}
               onMouseEnter={(e) => {
                 if (!isLoading && (input.trim() || attachedImages.length > 0) && isConnected) {
-                  e.currentTarget.style.color = 'var(--color-accent-primary)';
+                  e.currentTarget.style.opacity = '0.8';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isLoading && (input.trim() || attachedImages.length > 0) && isConnected) {
-                  e.currentTarget.style.color = 'var(--color-text-secondary)';
+                  e.currentTarget.style.opacity = '1';
                 }
               }}
               title="Send message"
