@@ -14,7 +14,8 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    customPath: ''
+    customPath: '',
+    viewportMode: 'desktop' as 'desktop' | 'mobile'
   });
   
   const [isScaffolding, setIsScaffolding] = useState(false);
@@ -68,7 +69,8 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
         const projectData = {
           name: formData.name.trim(),
           description: formData.description.trim() || undefined,
-          path: result.projectPath
+          path: result.projectPath,
+          viewportMode: formData.viewportMode
         };
 
         onCreateProject(projectData);
@@ -76,7 +78,7 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
         // Give a moment for progress to update to 100% before closing
         setTimeout(() => {
           // Reset form and close
-          setFormData({ name: '', description: '', customPath: '' });
+          setFormData({ name: '', description: '', customPath: '', viewportMode: 'desktop' });
           setIsScaffolding(false);
           setScaffoldProgress(null);
           onClose();
@@ -235,6 +237,58 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
             />
           </div>
 
+          {/* Screen Size Selector */}
+          <div className="form-field">
+            <label 
+              className="block text-sm font-medium mb-2"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              Screen Size
+            </label>
+            <div 
+              className="inline-flex border"
+              style={{ 
+                borderColor: 'var(--color-border-primary)',
+                backgroundColor: 'var(--color-bg-secondary)'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, viewportMode: 'desktop' }))}
+                className="px-3 py-2 transition-colors"
+                style={{
+                  backgroundColor: formData.viewportMode === 'desktop' 
+                    ? 'var(--color-surface-active)' 
+                    : 'transparent',
+                  color: formData.viewportMode === 'desktop'
+                    ? 'var(--color-text-primary)'
+                    : 'var(--color-text-secondary)'
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, viewportMode: 'mobile' }))}
+                className="px-3 py-2 transition-colors"
+                style={{
+                  backgroundColor: formData.viewportMode === 'mobile' 
+                    ? 'var(--color-surface-active)' 
+                    : 'transparent',
+                  color: formData.viewportMode === 'mobile'
+                    ? 'var(--color-text-primary)'
+                    : 'var(--color-text-secondary)'
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
           {/* Project Path */}
           <div className="form-field">
             <div className="flex items-center gap-2 mb-2">
@@ -247,10 +301,10 @@ export const CreateProjectModal = ({ isOpen, onClose, onCreateProject }: CreateP
               />
               <label 
                 htmlFor="custom-path" 
-                className="text-sm font-medium"
+                className="text-sm font-medium cursor-pointer"
                 style={{ color: 'var(--color-text-primary)' }}
               >
-                Custom project path
+                Custom Location
               </label>
             </div>
             

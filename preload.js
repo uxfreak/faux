@@ -89,6 +89,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('project:duplicate-complete');
   },
 
+  // Viewport persistence API
+  updateViewport: (projectId, viewportMode, viewSettings) => 
+    ipcRenderer.invoke('project:updateViewport', { projectId, viewportMode, viewSettings }),
+  getProjectSettings: (projectId) => ipcRenderer.invoke('project:getSettings', projectId),
+  onViewportUpdated: (callback) => {
+    ipcRenderer.on('project:viewport-updated', (event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('project:viewport-updated');
+  },
+
   // DOM Inspector API
   inspector: {
     inject: (frameUrl) => ipcRenderer.invoke('inspector:inject', frameUrl),

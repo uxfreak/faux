@@ -407,6 +407,49 @@ function setupIPCHandlers() {
     }
   });
 
+  // IPC handler for updating project viewport
+  ipcMain.handle('project:updateViewport', async (event, { projectId, viewportMode, viewSettings }) => {
+    try {
+      const updates = {};
+      if (viewportMode !== undefined) updates.viewportMode = viewportMode;
+      if (viewSettings !== undefined) updates.viewSettings = viewSettings;
+      
+      const success = db.updateProject(projectId, updates);
+      
+      if (success) {
+        // Notify renderer that project data has changed
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('project:viewport-updated', { projectId, ...updates });
+        }
+        return { success: true };
+      } else {
+        throw new Error('Failed to update project viewport');
+      }
+    } catch (error) {
+      console.error('Error updating project viewport:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // IPC handler for getting project settings
+  ipcMain.handle('project:getSettings', async (event, projectId) => {
+    try {
+      const project = db.getProject(projectId);
+      if (!project) {
+        throw new Error('Project not found');
+      }
+      
+      return {
+        success: true,
+        viewportMode: project.viewportMode || 'desktop',
+        viewSettings: project.viewSettings || null
+      };
+    } catch (error) {
+      console.error('Error getting project settings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Terminal management IPC handlers
   const terminalManager = getTerminalManager();
   

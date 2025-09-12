@@ -272,37 +272,292 @@ button:focus-visible {
 }`;
     await writeFile(indexCssPath, indexCssContent);
 
-    // Update App.tsx with Tailwind example
-    const appContent = `import React from 'react'
+    // Update App.tsx with minimal blueprint canvas template
+    const appContent = `import React, { useEffect, useState } from 'react'
 import './App.css'
 
 function App() {
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+  const [prompt, setPrompt] = useState('')
+  
+  const prompts = [
+    "What will you create today?",
+    "Your canvas awaits",
+    "Design something beautiful",
+    "Start with a single line",
+    "Every masterpiece begins here",
+    "Transform ideas into reality",
+    "Make something amazing"
+  ]
+
+  useEffect(() => {
+    // Set random prompt on mount
+    setPrompt(prompts[Math.floor(Math.random() * prompts.length)])
+    
+    // Track mouse position
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY })
+    }
+    
+    window.addEventListener('mousemove', handleMouseMove)
+    return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden">
-        <div className="p-8">
-          <div className="uppercase tracking-wide text-sm text-indigo-500 font-semibold">
-            Faux Project
-          </div>
-          <h1 className="block mt-1 text-lg leading-tight font-medium text-black">
-            ${projectName}
-          </h1>
-          <p className="mt-2 text-gray-500">
-            Your Vite + React + TypeScript + Tailwind project is ready!
-          </p>
-          <div className="mt-4">
-            <button className="bg-black hover:bg-black text-white font-bold py-2 px-4 rounded">
-              Get Started
-            </button>
-          </div>
-        </div>
+    <main className="blueprint-canvas">
+      {/* Grid pattern background */}
+      <div className="grid-pattern" aria-hidden="true"></div>
+      
+      {/* Cursor position indicator */}
+      <div className="cursor-position">
+        {mousePos.x}, {mousePos.y}
       </div>
-    </div>
+      
+      {/* Center prompt */}
+      <div className="canvas-prompt">
+        <h1 className="prompt-text">{prompt}</h1>
+        <div className="prompt-cursor"></div>
+      </div>
+      
+      {/* Corner markers */}
+      <div className="corner-marker top-left"></div>
+      <div className="corner-marker top-right"></div>
+      <div className="corner-marker bottom-left"></div>
+      <div className="corner-marker bottom-right"></div>
+    </main>
   )
 }
 
 export default App`;
     await writeFile(path.join(projectPath, 'src', 'App.tsx'), appContent);
+
+    // Create App.css with minimal blueprint canvas styles
+    const appCssContent = `/* Minimal Blueprint Canvas */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --canvas-bg: #fcfcfc;
+  --grid-color: #e5e5e5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #999999;
+  --accent-color: #0066ff;
+  --corner-marker: #cccccc;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas-bg: #0a0a0a;
+    --grid-color: #1a1a1a;
+    --text-primary: #f0f0f0;
+    --text-secondary: #666666;
+    --accent-color: #4d94ff;
+    --corner-marker: #333333;
+  }
+}
+
+body {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  cursor: crosshair;
+}
+
+.blueprint-canvas {
+  width: 100vw;
+  height: 100vh;
+  background: var(--canvas-bg);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Grid pattern */
+.grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      var(--grid-color),
+      var(--grid-color) 1px,
+      transparent 1px,
+      transparent 20px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--grid-color),
+      var(--grid-color) 1px,
+      transparent 1px,
+      transparent 20px
+    );
+  opacity: 0.3;
+}
+
+/* Dot grid alternative (commented out) */
+/* .grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(
+    circle,
+    var(--grid-color) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+  opacity: 0.4;
+} */
+
+/* Cursor position */
+.cursor-position {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Canvas prompt */
+.canvas-prompt {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  animation: fadeIn 0.8s ease;
+}
+
+.prompt-text {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  line-height: 1.2;
+  animation: slideUp 1s ease;
+}
+
+.prompt-cursor {
+  width: 2px;
+  height: 24px;
+  background: var(--accent-color);
+  display: inline-block;
+  margin-left: 4px;
+  animation: blink 1.2s infinite;
+}
+
+/* Corner markers */
+.corner-marker {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--corner-marker);
+  pointer-events: none;
+}
+
+.corner-marker.top-left {
+  top: 20px;
+  left: 20px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-marker.top-right {
+  top: 20px;
+  right: 20px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.corner-marker.bottom-left {
+  bottom: 20px;
+  left: 20px;
+  border-right: none;
+  border-top: none;
+}
+
+.corner-marker.bottom-right {
+  bottom: 20px;
+  right: 20px;
+  border-left: none;
+  border-top: none;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Hover effect for interactive feel */
+.blueprint-canvas:hover .grid-pattern {
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.blueprint-canvas:hover .corner-marker {
+  border-color: var(--text-secondary);
+  transition: border-color 0.3s ease;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .prompt-text {
+    font-size: 1.75rem;
+  }
+  
+  .cursor-position {
+    display: none;
+  }
+  
+  .corner-marker {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+/* Ultra minimal for small screens */
+@media (max-width: 480px) {
+  .prompt-text {
+    font-size: 1.25rem;
+  }
+  
+  .grid-pattern {
+    background-size: 15px 15px;
+  }
+}`;
+    await writeFile(path.join(projectPath, 'src', 'App.css'), appCssContent);
 
     steps[currentStepIndex].status = 'completed';
     currentStepIndex++;

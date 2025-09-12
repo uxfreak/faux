@@ -73,6 +73,22 @@ export class DatabaseService {
       // Column already exists, ignore error
     }
     
+    // Add viewportMode column to existing tables if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE projects ADD COLUMN viewportMode TEXT DEFAULT "desktop"');
+      console.log('Added viewportMode column to existing projects table');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+    
+    // Add viewSettings column to existing tables if it doesn't exist
+    try {
+      this.db.exec('ALTER TABLE projects ADD COLUMN viewSettings TEXT');
+      console.log('Added viewSettings column to existing projects table');
+    } catch (error) {
+      // Column already exists, ignore error
+    }
+    
     console.log('Database tables initialized');
   }
 
@@ -89,6 +105,8 @@ export class DatabaseService {
       path: row.path,
       deploymentUrl: row.deploymentUrl,
       storybookUrl: row.storybookUrl,
+      viewportMode: row.viewportMode || 'desktop',
+      viewSettings: row.viewSettings ? JSON.parse(row.viewSettings) : null,
       lastDeployedAt: row.lastDeployedAt ? new Date(row.lastDeployedAt) : null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)
@@ -106,8 +124,8 @@ export class DatabaseService {
     };
 
     const stmt = this.db.prepare(`
-      INSERT INTO projects (id, name, description, thumbnail, path, deploymentUrl, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, description, thumbnail, path, deploymentUrl, viewportMode, viewSettings, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -117,6 +135,8 @@ export class DatabaseService {
       newProject.thumbnail || null,
       newProject.path,
       newProject.deploymentUrl || null,
+      newProject.viewportMode || 'desktop',
+      newProject.viewSettings ? JSON.stringify(newProject.viewSettings) : null,
       now,
       now
     );
@@ -161,6 +181,16 @@ export class DatabaseService {
     if (updates.lastDeployedAt !== undefined) {
       fields.push('lastDeployedAt = ?');
       values.push(updates.lastDeployedAt ? updates.lastDeployedAt.getTime() : null);
+    }
+    
+    if (updates.viewportMode !== undefined) {
+      fields.push('viewportMode = ?');
+      values.push(updates.viewportMode);
+    }
+    
+    if (updates.viewSettings !== undefined) {
+      fields.push('viewSettings = ?');
+      values.push(updates.viewSettings ? JSON.stringify(updates.viewSettings) : null);
     }
     
     // Always update updatedAt
@@ -463,6 +493,8 @@ export class DatabaseService {
       thumbnail: row.thumbnail,
       path: row.path,
       deploymentUrl: row.deploymentUrl,
+      viewportMode: row.viewportMode || 'desktop',
+      viewSettings: row.viewSettings ? JSON.parse(row.viewSettings) : null,
       lastDeployedAt: row.lastDeployedAt ? new Date(row.lastDeployedAt) : null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt)

@@ -42,6 +42,23 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
   // Server management
   const { serverState, startServers, stopServers, retryConnection } = useProjectServers(project);
 
+  // Load saved viewport mode when project opens
+  useEffect(() => {
+    const loadViewportSettings = async () => {
+      if (window.electronAPI?.getProjectSettings) {
+        try {
+          const result = await window.electronAPI.getProjectSettings(project.id);
+          if (result.success && result.viewportMode) {
+            setViewportMode(result.viewportMode);
+          }
+        } catch (error) {
+          console.error('Failed to load viewport settings:', error);
+        }
+      }
+    };
+    loadViewportSettings();
+  }, [project.id]);
+
   // Thumbnail management
   const { 
     captureOnProjectOpen, 
@@ -343,8 +360,18 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
     setIsFullscreen(!isFullscreen);
   };
 
-  const handleViewportToggle = () => {
-    setViewportMode(viewportMode === 'desktop' ? 'mobile' : 'desktop');
+  const handleViewportToggle = async () => {
+    const newMode = viewportMode === 'desktop' ? 'mobile' : 'desktop';
+    setViewportMode(newMode);
+    
+    // Save to database
+    if (window.electronAPI?.updateViewport) {
+      try {
+        await window.electronAPI.updateViewport(project.id, newMode);
+      } catch (error) {
+        console.error('Failed to save viewport mode:', error);
+      }
+    }
   };
 
   const handleFullscreenClose = (e?: React.MouseEvent) => {
