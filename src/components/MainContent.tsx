@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
 import { Project } from '../types/Project';
-import { ViewMode } from './ProjectViewer';
+import { ViewMode, ViewportMode } from './ProjectViewer';
 import { ContentLoader } from './ContentLoader';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ProjectServerState } from '../hooks/useProjectServers';
@@ -9,6 +9,7 @@ import { ProjectServerState } from '../hooks/useProjectServers';
 interface MainContentProps {
   project: Project;
   viewMode: ViewMode;
+  viewportMode?: ViewportMode;
   serverState: ProjectServerState;
   isFullscreen?: boolean;
   onRetryConnection?: () => void;
@@ -17,7 +18,8 @@ interface MainContentProps {
 
 export const MainContent = ({ 
   project, 
-  viewMode, 
+  viewMode,
+  viewportMode = 'desktop',
   serverState,
   isFullscreen = false,
   onRetryConnection,
@@ -60,16 +62,43 @@ export const MainContent = ({
     
     return (
       <div className="server-content flex flex-col flex-1 overflow-hidden">
-        {/* Embedded Server Content */}
-        <div className="server-iframe-container flex-1 relative">
-          <iframe
-            ref={handleIframeRef}
-            src={finalUrl}
-            className="w-full h-full border-0"
-            title={`${serverName} - ${project.name}`}
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-            loading="lazy"
-          />
+        {/* Viewport Container */}
+        <div 
+          className={`viewport-container flex-1 ${viewportMode === 'mobile' ? 'flex items-center justify-center' : ''}`}
+          style={{
+            backgroundColor: viewportMode === 'mobile' ? 'var(--color-bg-secondary)' : 'transparent',
+            padding: viewportMode === 'mobile' ? '20px 0' : '0'
+          }}
+        >
+          {/* Embedded Server Content */}
+          <div 
+            className={`server-iframe-container ${viewportMode === 'mobile' ? 'mobile-viewport' : 'flex-1'} relative`}
+            style={viewportMode === 'mobile' ? {
+              width: '375px',
+              height: '100%',
+              boxShadow: 'var(--shadow-lg)',
+              border: '1px solid var(--color-border-primary)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              backgroundColor: 'var(--color-bg-primary)',
+              transition: 'all 0.3s ease-in-out'
+            } : {
+              width: '100%',
+              height: '100%'
+            }}
+          >
+            <iframe
+              ref={handleIframeRef}
+              src={finalUrl}
+              className="w-full h-full border-0"
+              title={`${serverName} - ${project.name}`}
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              loading="lazy"
+              style={{
+                borderRadius: viewportMode === 'mobile' ? '8px' : '0'
+              }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -253,8 +282,9 @@ export const MainContent = ({
       data-content={dataContent}
       data-project-id={project.id}
       data-mode={viewMode}
+      data-viewport={viewportMode}
       data-fullscreen={isFullscreen}
-      key={`${viewMode}-${isFullscreen}`}
+      key={`${viewMode}-${viewportMode}-${isFullscreen}`}
       initial={{ opacity: 0, y: isFullscreen ? 0 : 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: isFullscreen ? 0.4 : 0.2, ease: 'easeInOut' }}

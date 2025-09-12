@@ -10,6 +10,7 @@ import { useProjectServers } from '../hooks/useProjectServers';
 import { useThumbnails } from '../hooks/useThumbnails';
 
 export type ViewMode = 'preview' | 'components';
+export type ViewportMode = 'desktop' | 'mobile';
 
 interface ProjectViewerProps {
   project: Project;
@@ -19,6 +20,7 @@ interface ProjectViewerProps {
 
 export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewerProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
+  const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop');
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [isCodexOpen, setIsCodexOpen] = useState(false);
   const [terminalWidth, setTerminalWidth] = useState(400); // Default 400px
@@ -341,6 +343,10 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
     setIsFullscreen(!isFullscreen);
   };
 
+  const handleViewportToggle = () => {
+    setViewportMode(viewportMode === 'desktop' ? 'mobile' : 'desktop');
+  };
+
   const handleFullscreenClose = (e?: React.MouseEvent) => {
     // Prevent closing if this was triggered by a drag operation
     if (hasBeenDragged) {
@@ -435,12 +441,14 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
         <ProjectHeader
           project={project}
           viewMode={viewMode}
+          viewportMode={viewportMode}
           isTerminalOpen={isTerminalOpen}
           isCodexOpen={isCodexOpen}
           isFullscreen={isFullscreen}
           serverState={serverState}
           onBack={handleBackWithCleanup}
           onModeChange={handleModeChange}
+          onViewportToggle={handleViewportToggle}
           onTerminalToggle={handleTerminalToggle}
           onCodexToggle={handleCodexToggle}
           onFullscreenToggle={handleFullscreenToggle}
@@ -470,6 +478,7 @@ export const ProjectViewer = ({ project, onBack, onProjectUpdate }: ProjectViewe
           <MainContent
             project={project}
             viewMode={viewMode}
+            viewportMode={viewportMode}
             serverState={serverState}
             isFullscreen={isFullscreen}
             onRetryConnection={retryConnection}

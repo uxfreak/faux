@@ -3,18 +3,20 @@ import { ModeToggle } from './ModeToggle';
 import { ThemeToggle } from './ThemeToggle';
 import { LoadingSpinner } from './LoadingSpinner';
 import { Project } from '../types/Project';
-import { ViewMode } from './ProjectViewer';
+import { ViewMode, ViewportMode } from './ProjectViewer';
 import { ProjectServerState } from '../hooks/useProjectServers';
 
 interface ProjectHeaderProps {
   project: Project;
   viewMode: ViewMode;
+  viewportMode?: ViewportMode;
   isTerminalOpen: boolean;
   isCodexOpen: boolean;
   isFullscreen: boolean;
   serverState: ProjectServerState;
   onBack: () => void;
   onModeChange: (mode: ViewMode) => void;
+  onViewportToggle?: () => void;
   onTerminalToggle: () => void;
   onCodexToggle: () => void;
   onFullscreenToggle: () => void;
@@ -25,13 +27,15 @@ interface ProjectHeaderProps {
 
 export const ProjectHeader = ({ 
   project, 
-  viewMode, 
+  viewMode,
+  viewportMode = 'desktop',
   isTerminalOpen,
   isCodexOpen,
   isFullscreen,
   serverState,
   onBack, 
   onModeChange,
+  onViewportToggle,
   onTerminalToggle,
   onCodexToggle,
   onFullscreenToggle,
@@ -124,6 +128,44 @@ export const ProjectHeader = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
             </motion.button>
+            
+            {/* Viewport Toggle - mobile/desktop view */}
+            {onViewportToggle && (
+              <motion.button
+                onClick={onViewportToggle}
+                className="viewport-toggle p-2 transition-colors"
+                style={{
+                  color: viewportMode === 'mobile' 
+                    ? 'var(--color-text-primary)' 
+                    : 'var(--color-text-secondary)',
+                  backgroundColor: viewportMode === 'mobile' 
+                    ? 'var(--color-surface-hover)' 
+                    : 'transparent'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--color-text-primary)';
+                  if (viewportMode !== 'mobile') {
+                    e.currentTarget.style.backgroundColor = 'var(--color-surface-hover)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (viewportMode !== 'mobile') {
+                    e.currentTarget.style.color = 'var(--color-text-secondary)';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                title="Toggle Mobile View"
+                data-control="viewport"
+                data-active={viewportMode === 'mobile'}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              </motion.button>
+            )}
+            
             <div className="divider w-px h-4" style={{ backgroundColor: 'var(--color-border-secondary)' }} />
           </>
         )}
